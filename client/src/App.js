@@ -11,7 +11,7 @@ function App() {
   const [selectedContestant, setSelectedContestant] = useState(null);
   const [category, setCategory] = useState('natural_beauty');
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // We can re-use this
   const [divisions, setDivisions] = useState([]);
 
   useEffect(() => {
@@ -40,7 +40,6 @@ function App() {
   const loadContestants = async () => {
     try {
       const response = await api.getContestants(activePageantId);
-      console.log('Loaded contestants:', response.data);
       setContestants(response.data);
     } catch (error) {
       console.error('Error loading contestants:', error);
@@ -178,8 +177,6 @@ function App() {
 
       const headers = parseCSVLine(lines[0]);
       
-      console.log('CSV Headers:', headers);
-      
       const nameIndex = headers.findIndex(h => {
         const lower = h.toLowerCase();
         return (lower.includes('contestant') && lower.includes('name')) ||
@@ -195,15 +192,6 @@ function App() {
         h.toLowerCase().includes('casual wear')
       );
       
-      console.log('Column indices:', { 
-        nameIndex, 
-        emailIndex, 
-        divisionIndex, 
-        photogenicIndex, 
-        casualWearIndex, 
-        divisionHeader: divisionIndex >= 0 ? headers[divisionIndex] : 'NOT FOUND'
-      });
-
       if (nameIndex === -1 || emailIndex === -1) {
         alert('CSV must contain "Name" and "Email" columns. Found columns: ' + headers.join(', '));
         throw new Error('Required columns not found');
@@ -225,12 +213,7 @@ function App() {
         const email = values[emailIndex]?.trim();
         const division = divisionIndex >= 0 ? (values[divisionIndex]?.trim() || '') : '';
         
-        if (!name || !email) {
-          console.warn(`Skipping row ${i + 1}: missing name or email`);
-          continue;
-        }
-        
-        console.log(`Row ${i}: name=${name}, division=${division}`);
+        if (!name || !email) continue;
         
         contestants.push({
           pageant_id: activePageantId,
@@ -243,8 +226,6 @@ function App() {
           raw_data: rawData
         });
       }
-      
-      console.log('Parsed contestants with divisions:', contestants.map(c => ({ name: c.name, division: c.division })));
       return contestants;
     };
 
@@ -253,18 +234,14 @@ function App() {
         alert('Please create or select an active pageant first');
         return;
       }
-
       try {
         setLoading(true);
         const newContestants = parseCSV(csvData);
-        
         if (newContestants.length === 0) {
           alert('No valid contestants found in CSV');
           setLoading(false);
           return;
         }
-
-        console.log('Importing contestants:', newContestants);
         await api.bulkCreateContestants(newContestants);
         setCsvData('');
         setShowImport(false);
@@ -273,7 +250,6 @@ function App() {
         alert(`Successfully imported ${newContestants.length} contestants!`);
       } catch (error) {
         alert('Error importing CSV: ' + error.message);
-        console.error('CSV Import Error:', error);
       } finally {
         setLoading(false);
       }
@@ -288,7 +264,6 @@ function App() {
         alert('Name and email are required');
         return;
       }
-
       try {
         await api.createContestant({
           ...newContestant,
@@ -306,7 +281,6 @@ function App() {
 
     const updateContestant = async () => {
       if (!editingContestant) return;
-
       try {
         await api.updateContestant(editingContestant.id, editingContestant);
         setEditingContestant(null);
@@ -337,7 +311,6 @@ function App() {
         alert('Please enter a contestant number');
         return;
       }
-
       try {
         await api.updateCheckIn(checkInContestantId, true, checkInNumber);
         setCheckInContestantId(null);
@@ -351,7 +324,6 @@ function App() {
     const updatePaymentField = async (id, field, value) => {
       const contestant = contestants.find(c => c.id === id);
       if (!contestant) return;
-
       try {
         if (field === 'paid') {
           await api.updatePayment(id, value, contestant.balance);
@@ -367,18 +339,19 @@ function App() {
     const sendScoreSheets = async () => {
       if (!activePageantId) return;
       
-      setEmailStatus('Preparing score sheets...');
+      setEmailStatus('Sending score sheets... This may take a moment.');
+      setLoading(true); // Use main loading state to disable buttons
       
-      const activeContestants = getActiveContestants();
-      let sent = 0;
-      
-      for (const contestant of activeContestants) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setEmailStatus(`Sending to ${contestant.name} (${++sent}/${activeContestants.length})...`);
+      try {
+        const response = await api.sendScoreSheets(activePageantId);
+        setEmailStatus(`Successfully sent ${response.data.sent} score sheets!`);
+      } catch (error) {
+        console.error('Error sending score sheets:', error);
+        setEmailStatus('An error occurred. Please check server logs.');
+      } finally {
+        setLoading(false);
+        setTimeout(() => setEmailStatus(''), 5000); // Clear status after 5 sec
       }
-      
-      setEmailStatus(`Successfully sent ${sent} score sheets!`);
-      setTimeout(() => setEmailStatus(''), 3000);
     };
 
     const setActivePageantHandler = async (id) => {
@@ -396,8 +369,6 @@ function App() {
     
     const processedContestants = useMemo(() => {
       let filterableContestants = contestants.filter(c => c.pageant_id === activePageantId);
-
-      // 1. Apply search term filter
       if (searchTerm) {
         filterableContestants = filterableContestants.filter(c =>
           c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -406,20 +377,13 @@ function App() {
           (c.contestant_number && c.contestant_number.includes(searchTerm))
         );
       }
-
-      // 2. Apply division filter
       if (divisionFilter) {
         filterableContestants = filterableContestants.filter(c => c.division === divisionFilter);
       }
-
-      // 3. Apply sorting
       if (sortConfig.key) {
-        // Create a copy before sorting to avoid mutating state
         filterableContestants = [...filterableContestants].sort((a, b) => {
           let aValue = a[sortConfig.key];
           let bValue = b[sortConfig.key];
-
-          // Custom logic for different keys
           switch (sortConfig.key) {
             case 'contestant_number':
               const aNum = aValue ? parseInt(aValue, 10) : Infinity;
@@ -427,7 +391,6 @@ function App() {
               if (aNum < bNum) return sortConfig.direction === 'ascending' ? -1 : 1;
               if (aNum > bNum) return sortConfig.direction === 'ascending' ? 1 : -1;
               return 0;
-            
             case 'paid':
             case 'checked_in':
             case 'photogenic': 
@@ -437,14 +400,12 @@ function App() {
               if (aBool < bBool) return sortConfig.direction === 'ascending' ? -1 : 1;
               if (aBool > bBool) return sortConfig.direction === 'ascending' ? 1 : -1;
               return 0;
-
             case 'balance':
               const aBal = aValue || 0;
               const bBal = bValue || 0;
               if (aBal < bBal) return sortConfig.direction === 'ascending' ? -1 : 1;
               if (aBal > bBal) return sortConfig.direction === 'ascending' ? 1 : -1;
               return 0;
-              
             case 'name':
             case 'division':
             case 'email':
@@ -457,7 +418,6 @@ function App() {
           }
         });
       }
-
       return filterableContestants;
     }, [contestants, activePageantId, searchTerm, divisionFilter, sortConfig]);
     
@@ -522,25 +482,27 @@ function App() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
               <button
                 onClick={() => setShowImport(!showImport)}
-                className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
+                disabled={loading}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
               >
                 <Upload className="w-5 h-5" />
                 <span>Import CSV</span>
               </button>
               <button
                 onClick={() => setShowAddContestant(!showAddContestant)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
+                disabled={loading}
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
               >
                 <Plus className="w-5 h-5" />
                 <span>Add Contestant</span>
               </button>
               <button
                 onClick={sendScoreSheets}
-                disabled={activeContestants.length === 0}
+                disabled={activeContestants.length === 0 || loading}
                 className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
               >
                 <Mail className="w-5 h-5" />
-                <span>Send Scores</span>
+                <span>{loading && emailStatus ? 'Sending...' : 'Send Scores'}</span>
               </button>
               <div className="bg-purple-100 p-4 rounded-lg text-center">
                 <div className="text-2xl font-bold text-purple-800">{checkedInCount}/{activeContestants.length}</div>
@@ -557,7 +519,7 @@ function App() {
                 <p className="text-blue-800 font-medium">{emailStatus}</p>
               </div>
             )}
-
+            
             {showImport && (
               <div className="bg-white border-2 border-blue-300 rounded-lg p-4 mb-6">
                 <h3 className="font-semibold mb-2">Import Contestants (CSV Format)</h3>
@@ -1122,31 +1084,20 @@ function App() {
     );
   };
   
-  // ==========================================================
-  // ## TabulatorDashboard - MODIFIED
-  // ==========================================================
   const TabulatorDashboard = () => {
     const [tieBreakRequest, setTieBreakRequest] = useState(null);
-    // ==========================================================
-    // ## 1. ADDED: State for division filter
-    // ==========================================================
     const [divisionFilter, setDivisionFilter] = useState('');
     const activePageant = getActivePageant();
 
-    // ==========================================================
-    // ## 2. MODIFIED: Converted to useMemo to react to filter
-    // ==========================================================
     const scoresByContestant = useMemo(() => {
       const scoresByC = {};
       
       scores.forEach(score => {
         const contestant = contestants.find(c => c.id === score.contestant_id);
         
-        // Filter logic
         if (contestant && contestant.pageant_id === activePageantId) {
-          // ADDED: Division filter check
           if (divisionFilter && contestant.division !== divisionFilter) {
-            return; // Skip this score if it's not in the filtered division
+            return; 
           }
           
           if (!scoresByC[score.contestant_id]) {
@@ -1164,11 +1115,8 @@ function App() {
         }
       });
       return scoresByC;
-    }, [scores, contestants, activePageantId, divisionFilter]); // Added dependencies
+    }, [scores, contestants, activePageantId, divisionFilter]); 
 
-    // ==========================================================
-    // ## 3. MODIFIED: Converted to useMemo to react to filtered scores
-    // ==========================================================
     const ties = useMemo(() => {
       const categoryTotals = {};
       
@@ -1194,7 +1142,7 @@ function App() {
         });
       });
       return ties;
-    }, [scoresByContestant]); // Depends on the filtered scores
+    }, [scoresByContestant]); 
 
     const requestTieBreak = (tie) => {
       setTieBreakRequest({
@@ -1203,8 +1151,6 @@ function App() {
       });
     };
     
-    // const ties = detectTies(); // This is no longer needed
-
     if (!activePageantId) {
       return (
         <div className="p-6 max-w-6xl mx-auto">
@@ -1270,9 +1216,6 @@ function App() {
         )}
 
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          {/* ========================================================== */}
-          {/* ## 4. ADDED: Division filter dropdown UI
-          {/* ========================================================== */}
           <div className="p-4 bg-gray-100 border-b flex justify-between items-center">
             <h3 className="font-semibold text-lg">All Scores</h3>
             <select
