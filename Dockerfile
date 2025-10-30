@@ -1,39 +1,42 @@
-# Stage 1: Build the React frontend
-FROM node:18-slim AS build
+# =============================
+# Stage 1 — Build React Client
+# =============================
+FROM node:18 AS frontend
 WORKDIR /app/client
 
-COPY client/package.json ./
+# Copy and install frontend dependencies
+COPY client/package*.json ./
 RUN npm install
 
-COPY client/ ./
+# Copy the rest of the frontend source
+COPY client/ .
+
+# Build the production-ready React app
 RUN npm run build
 
-# Stage 2: Create the production image
-FROM node:18-slim
-RUN apt-get update && apt-get install -y sqlite3 && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user for security
-RUN useradd --create-home --shell /bin/bash appuser
-WORKDIR /home/appuser/pageant-scoring-system
+# =============================
+# Stage 2 — Backend Server
+# =============================
+FROM node:18
 
-# Copy backend dependencies and install
-COPY package.json ./
-RUN npm install --omit=dev
+# Set up working directory
+WORKDIR /app
 
-# Copy backend source code
-COPY server.js ./
+# Copy backend package files and install deps
+COPY package*.json ./
+RUN npm install --production
 
-# Copy the built frontend from the build stage
-COPY --from=build /app/client/build ./client/build
+# Copy backend source
+COPY server.js .
+COPY setup.sh .
 
-# Set correct ownership for the app directory
-RUN chown -R appuser:appuser .
+# Copy built frontend from Stage 1
+COPY --from=frontend /app/client/build ./client/build
 
-# Switch to the non-root user
-USER appuser
-
-# Expose the application port
+# Optional: set environment variables
+ENV NODE_ENV=production
 EXPOSE 3000
 
-# Define the command to start the server
+# Start the backend
 CMD ["node", "server.js"]
