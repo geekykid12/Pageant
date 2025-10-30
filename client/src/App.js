@@ -21,7 +21,7 @@ function App() {
   useEffect(() => {
     if (activePageantId) {
       loadContestants();
-      loadAllScores(); // Renamed
+      loadAllScores(); 
       loadDivisions();
     }
   }, [activePageantId]);
@@ -46,7 +46,6 @@ function App() {
     }
   };
 
-  // Renamed function for clarity
   const loadAllScores = async () => {
     try {
       const response = await api.getScores(activePageantId);
@@ -92,9 +91,6 @@ function App() {
     </div>
   );
 
-  // ==========================================================
-  // ## RegistrarDashboard
-  // ==========================================================
   const RegistrarDashboard = () => {
     const [csvData, setCsvData] = useState('');
     const [showImport, setShowImport] = useState(false);
@@ -967,13 +963,20 @@ function App() {
       maxTotal = 25 * 4;
     }
 
-
+    // ==========================================================
+    // ## FIX 1: Add Logout button to "No active pageant"
+    // ==========================================================
     if (!activePageantId) {
       return (
         <div className="p-6 max-w-4xl mx-auto">
+          <div className="flex justify-end mb-6">
+             <button onClick={() => setUser(null)} className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded">
+              Logout
+            </button>
+          </div>
           <div className="text-center py-12">
             <Award className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-            <p className="text-gray-600 text-lg">No active pageant.</p>
+            <p className="text-gray-600 text-lg">No active pageant. Please wait for the Registrar.</p>
           </div>
         </div>
       );
@@ -1356,12 +1359,20 @@ function App() {
       );
     };
 
+    // ==========================================================
+    // ## FIX 1: Add Logout button to "No active pageant"
+    // ==========================================================
     if (!activePageantId) {
       return (
         <div className="p-6 max-w-6xl mx-auto">
+          <div className="flex justify-end mb-6">
+             <button onClick={() => setUser(null)} className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded">
+              Logout
+            </button>
+          </div>
           <div className="text-center py-12">
             <Award className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-            <p className="text-gray-600 text-lg">No active pageant selected.</p>
+            <p className="text-gray-600 text-lg">No active pageant. Please wait for the Registrar.</p>
           </div>
         </div>
       );
@@ -1518,7 +1529,7 @@ function App() {
                               <div className="text-2xl font-bold text-purple-600">{score.total.toFixed(1)}</div>
                               <div className="text-xs text-gray-500 mt-1">
                                 {/* ========================================================== */}
-                                {/* ## THE FIX IS HERE
+                                {/* ## FIX 2: Removed the extra JSON.parse
                                 {/* ========================================================== */}
                                 {Object.entries(score.scores).map(([k, v]) => `${k}: ${v}`).join(', ')}
                               </div>
