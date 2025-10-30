@@ -971,7 +971,11 @@ function App() {
         
         const response = await api.getScoresByJudge(activePageantId, user);
         setMyScores(response.data);
-        
+        console.log("Submitting score:", {
+            currentScores,
+            total,
+            calculatedTotal: Object.values(currentScores).reduce((a, b) => a + Number(b || 0), 0)
+            });
         alert('Score submitted successfully!');
         
       } catch (error) {
