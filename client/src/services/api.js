@@ -39,7 +39,8 @@ api.interceptors.response.use(
 );
 
 export const getPageants = () => api.get('/pageants');
-export const createPageant = (name) => api.post('/pageants', { name });
+// MODIFIED: Send pageant data as object
+export const createPageant = (pageantData) => api.post('/pageants', pageantData);
 export const setActivePageant = (id) => api.put(`/pageants/${id}/active`);
 export const getActivePageant = () => api.get('/pageants/active');
 
@@ -53,5 +54,8 @@ export const getDivisions = (pageantId) => api.get(`/divisions/${pageantId}`);
 
 export const getScores = (pageantId) => api.get(`/scores/${pageantId}`);
 export const createScore = (data) => api.post('/scores', data);
+
+// ADDED: Endpoint for sending score sheets
+export const sendScoreSheets = (pageantId) => api.post('/scores/send', { pageantId });
 
 export default api;
