@@ -29,7 +29,7 @@ RUN npm install --production
 
 # Copy backend source
 COPY server.js .
-COPY setup.sh .
+#COPY setup.sh .
 
 # Copy built frontend from Stage 1
 COPY --from=frontend /app/client/build ./client/build
