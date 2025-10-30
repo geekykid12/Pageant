@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    container_name: pageant-app
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    volumes:
+      - pageant-data:/home/appuser/pageant-scoring-system
+    env_file:
+      - .env # This tells Docker Compose to load variables from the .env file
+
+volumes:
+  pageant-data:

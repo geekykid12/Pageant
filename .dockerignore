@@ -1,3 +1,5 @@
+# .dockerignore
+
 # Git
 .git
 .gitignore
@@ -15,3 +17,6 @@ client/build
 # OS files
 .DS_Store
 Thumbs.db
+
+# Secrets
+.env
