@@ -336,9 +336,6 @@ function App() {
       }
     };
 
-    // ==========================================================
-    // ## MODIFIED: sendScoreSheets function
-    // ==========================================================
     const sendScoreSheets = async () => {
       if (!activePageantId) return;
       
@@ -485,7 +482,7 @@ function App() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
               <button
                 onClick={() => setShowImport(!showImport)}
-                disabled={loading} // MODIFIED
+                disabled={loading}
                 className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
               >
                 <Upload className="w-5 h-5" />
@@ -493,7 +490,7 @@ function App() {
               </button>
               <button
                 onClick={() => setShowAddContestant(!showAddContestant)}
-                disabled={loading} // MODIFIED
+                disabled={loading}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
               >
                 <Plus className="w-5 h-5" />
@@ -501,11 +498,10 @@ function App() {
               </button>
               <button
                 onClick={sendScoreSheets}
-                disabled={activeContestants.length === 0 || loading} // MODIFIED
+                disabled={activeContestants.length === 0 || loading}
                 className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
               >
                 <Mail className="w-5 h-5" />
-                {/* MODIFIED: Show sending state */}
                 <span>{loading && emailStatus ? 'Sending...' : 'Send Scores'}</span>
               </button>
               <div className="bg-purple-100 p-4 rounded-lg text-center">
@@ -518,14 +514,11 @@ function App() {
               </div>
             </div>
 
-            {/* MODIFIED: This will now show success/error messages */}
             {emailStatus && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-center">
                 <p className="text-blue-800 font-medium">{emailStatus}</p>
               </div>
             )}
-
-            {/* ... (rest of RegistrarDashboard is unchanged) ... */}
             
             {showImport && (
               <div className="bg-white border-2 border-blue-300 rounded-lg p-4 mb-6">
