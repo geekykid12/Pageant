@@ -873,26 +873,40 @@ function App() {
     }, [activePageantId, user]);
 
     useEffect(() => {
-      if (selectedContestant && category) {
-        const foundScore = myScores.find(
-          s => s.contestant_id === selectedContestant.id && s.category === category
-        );
-        if (foundScore) {
-          setIsSubmitted(true);
-          setSubmittedScore(foundScore);
-          setCurrentScores(foundScore.scores); 
-          setComments(foundScore.comments || '');
+        if (selectedContestant && category) {
+            const foundScore = myScores.find(
+            s => s.contestant_id === selectedContestant.id && s.category === category
+            );
+
+            if (foundScore) {
+            setIsSubmitted(true);
+            setSubmittedScore(foundScore);
+
+            // ✅ Fix: Safely parse score data if it’s stored as a JSON string
+            let parsedScores = {};
+            try {
+                parsedScores =
+                typeof foundScore.scores === 'string'
+                    ? JSON.parse(foundScore.scores)
+                    : foundScore.scores || {};
+            } catch (err) {
+                console.error('Error parsing scores:', err);
+                parsedScores = {};
+            }
+
+            setCurrentScores(parsedScores);
+            setComments(foundScore.comments || '');
+            } else {
+            setIsSubmitted(false);
+            setSubmittedScore(null);
+            setCurrentScores({});
+            setComments('');
+            }
         } else {
-          setIsSubmitted(false);
-          setSubmittedScore(null);
-          setCurrentScores({});
-          setComments('');
+            setIsSubmitted(false);
+            setSubmittedScore(null);
         }
-      } else {
-        setIsSubmitted(false);
-        setSubmittedScore(null);
-      }
-    }, [selectedContestant, category, myScores]);
+}, [selectedContestant, category, myScores]);
 
 
     const divisionContestants = useMemo(() => {
