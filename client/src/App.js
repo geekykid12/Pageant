@@ -93,7 +93,7 @@ function App() {
   );
 
   // ==========================================================
-  // ## RegistrarDashboard (MODIFIED)
+  // ## RegistrarDashboard
   // ==========================================================
   const RegistrarDashboard = () => {
     const [csvData, setCsvData] = useState('');
@@ -108,7 +108,6 @@ function App() {
     const [newPageantName, setNewPageantName] = useState('');
     const [enableCasualWear, setEnableCasualWear] = useState(false);
 
-    // REMOVED: emailStatus state
     const [checkInNumber, setCheckInNumber] = useState('');
     const [checkInContestantId, setCheckInContestantId] = useState(null);
     
@@ -340,8 +339,6 @@ function App() {
       }
     };
 
-    // REMOVED: sendScoreSheets function
-
     const setActivePageantHandler = async (id) => {
       try {
         await api.setActivePageant(id);
@@ -467,7 +464,6 @@ function App() {
 
         {activePageant && (
           <>
-            {/* MODIFIED: Grid cols 4 now */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <button
                 onClick={() => setShowImport(!showImport)}
@@ -485,7 +481,6 @@ function App() {
                 <Plus className="w-5 h-5" />
                 <span>Add Contestant</span>
               </button>
-              {/* REMOVED: Send Scores Button */}
               <div className="bg-purple-100 p-4 rounded-lg text-center">
                 <div className="text-2xl font-bold text-purple-800">{checkedInCount}/{activeContestants.length}</div>
                 <div className="text-xs text-purple-600">Checked In</div>
@@ -495,8 +490,6 @@ function App() {
                 <div className="text-xs text-green-600">Outstanding</div>
               </div>
             </div>
-
-            {/* REMOVED: emailStatus div */}
             
             {showImport && (
               <div className="bg-white border-2 border-blue-300 rounded-lg p-4 mb-6">
@@ -808,14 +801,13 @@ function App() {
   };
 
   // ==========================================================
-  // ## JudgeDashboard (MODIFIED)
+  // ## JudgeDashboard
   // ==========================================================
   const JudgeDashboard = () => {
     const [currentScores, setCurrentScores] = useState({});
     const [comments, setComments] = useState('');
     const [selectedDivision, setSelectedDivision] = useState('');
     
-    // ADDED: State for submitted scores
     const [myScores, setMyScores] = useState([]);
     const [submittedScore, setSubmittedScore] = useState(null);
     const [isSubmitted, setIsSubmitted] = useState(false);
@@ -870,7 +862,6 @@ function App() {
     
     const activePageant = getActivePageant(); 
 
-    // ADDED: Load this judge's scores
     useEffect(() => {
       if (activePageantId && user) {
         const loadMyScores = async () => {
@@ -883,9 +874,8 @@ function App() {
         };
         loadMyScores();
       }
-    }, [activePageantId, user]); // Reload if pageant or judge changes
+    }, [activePageantId, user]);
 
-    // ADDED: Check if score is already submitted when selection changes
     useEffect(() => {
       if (selectedContestant && category) {
         const foundScore = myScores.find(
@@ -894,7 +884,7 @@ function App() {
         if (foundScore) {
           setIsSubmitted(true);
           setSubmittedScore(foundScore);
-          setCurrentScores(foundScore.scores); // Load existing scores
+          setCurrentScores(foundScore.scores); 
           setComments(foundScore.comments || '');
         } else {
           setIsSubmitted(false);
@@ -927,7 +917,7 @@ function App() {
     }, [selectedDivision, category, contestants, activePageantId]); 
 
     const handleScoreChange = (criterion, value) => {
-      if (isSubmitted) return; // Don't allow changes if submitted
+      if (isSubmitted) return; 
 
       const numValue = parseFloat(value);
       const maxScore = category === 'photogenic' ? 100 : 25;
@@ -956,12 +946,10 @@ function App() {
           comments: comments.trim() || null
         });
         
-        // Reload this judge's scores to include the new one
         const response = await api.getScoresByJudge(activePageantId, user);
         setMyScores(response.data);
         
         alert('Score submitted successfully!');
-        // Don't reset, the useEffect will now show the read-only view
         
       } catch (error) {
         console.error('Error submitting score:', error);
@@ -1017,7 +1005,7 @@ function App() {
                   key={cat}
                   onClick={() => {
                     setCategory(cat);
-                    setSelectedContestant(null); // This will trigger useEffect
+                    setSelectedContestant(null); 
                   }}
                   className={`px-4 py-2 rounded capitalize ${category === cat ? 'bg-purple-600 text-white' : 'bg-gray-200'}`}
                 >
@@ -1032,7 +1020,7 @@ function App() {
             value={selectedDivision}
             onChange={(e) => {
               setSelectedDivision(e.target.value);
-              setSelectedContestant(null); // This will trigger useEffect
+              setSelectedContestant(null); 
             }}
             className="w-full border rounded p-2 mb-4"
           >
@@ -1049,7 +1037,7 @@ function App() {
                 value={selectedContestant?.id || ''}
                 onChange={(e) => {
                   const contestant = divisionContestants.find(c => c.id === parseInt(e.target.value));
-                  setSelectedContestant(contestant); // This will trigger useEffect
+                  setSelectedContestant(contestant); 
                 }}
                 className="w-full border rounded p-2 mb-4"
               >
@@ -1075,7 +1063,6 @@ function App() {
 
           {selectedContestant && (
             <div className="space-y-4">
-              {/* MODIFIED: Show submitted message */}
               {isSubmitted && (
                 <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4" role="alert">
                   <p className="font-bold flex items-center"><Lock className="w-4 h-4 mr-2" />Submitted</p>
@@ -1109,8 +1096,8 @@ function App() {
                       value={currentScores[criterion] !== undefined ? currentScores[criterion] : ''}
                       onChange={(e) => handleScoreChange(criterion, e.target.value)}
                       className="w-full border rounded p-2"
-                      readOnly={isSubmitted} // ADDED: Read-only if submitted
-                      disabled={isSubmitted} // ADDED: Disable if submitted
+                      readOnly={isSubmitted} 
+                      disabled={isSubmitted} 
                     />
                   </div>
                 ))}
@@ -1123,8 +1110,8 @@ function App() {
                     className="w-full border rounded p-2"
                     rows="3"
                     placeholder="Add any comments here..."
-                    readOnly={isSubmitted} // ADDED
-                    disabled={isSubmitted} // ADDED
+                    readOnly={isSubmitted} 
+                    disabled={isSubmitted} 
                   />
                 </div>
                 <div className="mt-4 pt-4 border-t">
@@ -1134,7 +1121,6 @@ function App() {
                 </div>
               </div>
               
-              {/* Hide button if submitted */}
               {!isSubmitted && (
                 <button
                   onClick={submitScore}
@@ -1152,18 +1138,16 @@ function App() {
   };
   
   // ==========================================================
-  // ## TabulatorDashboard (MODIFIED)
+  // ## TabulatorDashboard
   // ==========================================================
   const TabulatorDashboard = () => {
     const [tieBreakRequest, setTieBreakRequest] = useState(null);
     const [divisionFilter, setDivisionFilter] = useState('');
     const activePageant = getActivePageant();
     
-    // ADDED: State for this dashboard
     const [emailStatus, setEmailStatus] = useState('');
-    const [editingScore, setEditingScore] = useState(null); // Holds the score object to edit
+    const [editingScore, setEditingScore] = useState(null); 
 
-    // Calculate contestant list, sorted by total score
     const sortedContestants = useMemo(() => {
       const scoresByC = {};
       
@@ -1171,7 +1155,6 @@ function App() {
         const contestant = contestants.find(c => c.id === score.contestant_id);
         
         if (contestant && contestant.pageant_id === activePageantId) {
-          // Apply division filter
           if (divisionFilter && contestant.division !== divisionFilter) {
             return; 
           }
@@ -1183,7 +1166,7 @@ function App() {
               number: contestant.contestant_number,
               division: contestant.division,
               categories: {},
-              finalTotal: 0 // ADDED: Final total score
+              finalTotal: 0 
             };
           }
           if (!scoresByC[score.contestant_id].categories[score.category]) {
@@ -1193,7 +1176,6 @@ function App() {
         }
       });
 
-      // Calculate totals and return sorted array
       const contestantArray = Object.values(scoresByC);
       contestantArray.forEach(con => {
         let total = 0;
@@ -1203,16 +1185,14 @@ function App() {
         con.finalTotal = total;
       });
 
-      // Sort by finalTotal, highest to lowest
       return contestantArray.sort((a, b) => b.finalTotal - a.finalTotal);
 
     }, [scores, contestants, activePageantId, divisionFilter]); 
 
-    // Calculate ties
     const ties = useMemo(() => {
       const categoryTotals = {};
       
-      sortedContestants.forEach(data => { // Use sortedContestants
+      sortedContestants.forEach(data => {
         Object.entries(data.categories).forEach(([category, catScores]) => {
           const categoryKey = category.replace('_', ' ');
           
@@ -1234,9 +1214,8 @@ function App() {
         });
       });
       return ties;
-    }, [sortedContestants]); // Depends on the filtered & sorted scores
+    }, [sortedContestants]); 
 
-    // ADDED: Validation logic
     const divisionValidation = useMemo(() => {
       if (!divisionFilter) return { isValid: false, message: 'Select a division to validate.' };
 
@@ -1279,7 +1258,6 @@ function App() {
       });
     };
     
-    // ADDED: Send Scores button logic
     const handleSendScores = async () => {
       if (!divisionValidation.isValid) {
         alert("Cannot send scores: " + divisionValidation.message);
@@ -1301,7 +1279,6 @@ function App() {
       }
     };
     
-    // ADDED: Score Edit Modal
     const ScoreEditModal = ({ score, onClose, onSave }) => {
       const [newTotal, setNewTotal] = useState(score.total);
       const [newComments, setNewComments] = useState(score.comments || '');
@@ -1314,7 +1291,7 @@ function App() {
             comments: newComments,
             scores: newScores
           });
-          onSave(); // Will trigger reload
+          onSave(); 
           onClose();
         } catch (err) {
           alert('Failed to update score.');
@@ -1328,7 +1305,6 @@ function App() {
             <p className="mb-2">Judge: <span className="font-medium">{score.judge_name}</span></p>
             <p className="mb-4">Category: <span className="font-medium capitalize">{score.category.replace('_', ' ')}</span></p>
             
-            {/* Allow editing individual criteria */}
             <div className="space-y-2 mb-4">
               {Object.entries(newScores).map(([key, value]) => (
                 <div key={key} className="flex justify-between items-center">
@@ -1340,7 +1316,6 @@ function App() {
                     onChange={(e) => {
                       const updatedScores = {...newScores, [key]: parseFloat(e.target.value) || 0};
                       setNewScores(updatedScores);
-                      // Recalculate total
                       setNewTotal(Object.values(updatedScores).reduce((a, b) => a + b, 0));
                     }}
                     className="w-24 border rounded p-1"
@@ -1398,7 +1373,7 @@ function App() {
           <ScoreEditModal
             score={editingScore}
             onClose={() => setEditingScore(null)}
-            onSave={() => loadAllScores()} // Reload all scores on save
+            onSave={() => loadAllScores()} 
           />
         )}
       
@@ -1412,7 +1387,6 @@ function App() {
           </button>
         </div>
 
-        {/* Validation & Send Scores Section */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h3 className="font-bold text-xl mb-4">Division Validation & Send Scores</h3>
           <select
@@ -1494,7 +1468,6 @@ function App() {
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="p-4 bg-gray-100 border-b flex justify-between items-center">
             <h3 className="font-semibold text-lg">Scores (Sorted High to Low)</h3>
-            {/* Filter is now at the top in the validation box */}
           </div>
 
           <div className="p-4 space-y-6">
@@ -1544,6 +1517,9 @@ function App() {
                               </div>
                               <div className="text-2xl font-bold text-purple-600">{score.total.toFixed(1)}</div>
                               <div className="text-xs text-gray-500 mt-1">
+                                {/* ========================================================== */}
+                                {/* ## THE FIX IS HERE
+                                {/* ========================================================== */}
                                 {Object.entries(score.scores).map(([k, v]) => `${k}: ${v}`).join(', ')}
                               </div>
                               {score.comments && (
