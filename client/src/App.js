@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Upload, Award, Mail, Plus, AlertTriangle, Search, Edit2, X } from 'lucide-react';
+import { Upload, Award, Mail, Plus, AlertTriangle, Search, Edit2, X, CheckSquare, Lock } from 'lucide-react';
 import * as api from './services/api';
 
 function App() {
@@ -9,9 +9,9 @@ function App() {
   const [contestants, setContestants] = useState([]);
   const [scores, setScores] = useState([]);
   const [selectedContestant, setSelectedContestant] = useState(null);
-  const [category, setCategory] = useState('natural_beauty');
+  const [category, setCategory] = useState('beauty');
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false); // We can re-use this
+  const [loading, setLoading] = useState(false);
   const [divisions, setDivisions] = useState([]);
 
   useEffect(() => {
@@ -21,7 +21,7 @@ function App() {
   useEffect(() => {
     if (activePageantId) {
       loadContestants();
-      loadScores();
+      loadAllScores(); // Renamed
       loadDivisions();
     }
   }, [activePageantId]);
@@ -46,7 +46,8 @@ function App() {
     }
   };
 
-  const loadScores = async () => {
+  // Renamed function for clarity
+  const loadAllScores = async () => {
     try {
       const response = await api.getScores(activePageantId);
       setScores(response.data);
@@ -91,6 +92,9 @@ function App() {
     </div>
   );
 
+  // ==========================================================
+  // ## RegistrarDashboard (MODIFIED)
+  // ==========================================================
   const RegistrarDashboard = () => {
     const [csvData, setCsvData] = useState('');
     const [showImport, setShowImport] = useState(false);
@@ -104,7 +108,7 @@ function App() {
     const [newPageantName, setNewPageantName] = useState('');
     const [enableCasualWear, setEnableCasualWear] = useState(false);
 
-    const [emailStatus, setEmailStatus] = useState('');
+    // REMOVED: emailStatus state
     const [checkInNumber, setCheckInNumber] = useState('');
     const [checkInContestantId, setCheckInContestantId] = useState(null);
     
@@ -336,23 +340,7 @@ function App() {
       }
     };
 
-    const sendScoreSheets = async () => {
-      if (!activePageantId) return;
-      
-      setEmailStatus('Sending score sheets... This may take a moment.');
-      setLoading(true); // Use main loading state to disable buttons
-      
-      try {
-        const response = await api.sendScoreSheets(activePageantId);
-        setEmailStatus(`Successfully sent ${response.data.sent} score sheets!`);
-      } catch (error) {
-        console.error('Error sending score sheets:', error);
-        setEmailStatus('An error occurred. Please check server logs.');
-      } finally {
-        setLoading(false);
-        setTimeout(() => setEmailStatus(''), 5000); // Clear status after 5 sec
-      }
-    };
+    // REMOVED: sendScoreSheets function
 
     const setActivePageantHandler = async (id) => {
       try {
@@ -479,7 +467,8 @@ function App() {
 
         {activePageant && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            {/* MODIFIED: Grid cols 4 now */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <button
                 onClick={() => setShowImport(!showImport)}
                 disabled={loading}
@@ -496,14 +485,7 @@ function App() {
                 <Plus className="w-5 h-5" />
                 <span>Add Contestant</span>
               </button>
-              <button
-                onClick={sendScoreSheets}
-                disabled={activeContestants.length === 0 || loading}
-                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
-              >
-                <Mail className="w-5 h-5" />
-                <span>{loading && emailStatus ? 'Sending...' : 'Send Scores'}</span>
-              </button>
+              {/* REMOVED: Send Scores Button */}
               <div className="bg-purple-100 p-4 rounded-lg text-center">
                 <div className="text-2xl font-bold text-purple-800">{checkedInCount}/{activeContestants.length}</div>
                 <div className="text-xs text-purple-600">Checked In</div>
@@ -514,11 +496,7 @@ function App() {
               </div>
             </div>
 
-            {emailStatus && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-center">
-                <p className="text-blue-800 font-medium">{emailStatus}</p>
-              </div>
-            )}
+            {/* REMOVED: emailStatus div */}
             
             {showImport && (
               <div className="bg-white border-2 border-blue-300 rounded-lg p-4 mb-6">
@@ -829,33 +807,25 @@ function App() {
     );
   };
 
+  // ==========================================================
+  // ## JudgeDashboard (MODIFIED)
+  // ==========================================================
   const JudgeDashboard = () => {
     const [currentScores, setCurrentScores] = useState({});
     const [comments, setComments] = useState('');
     const [selectedDivision, setSelectedDivision] = useState('');
     
+    // ADDED: State for submitted scores
+    const [myScores, setMyScores] = useState([]);
+    const [submittedScore, setSubmittedScore] = useState(null);
+    const [isSubmitted, setIsSubmitted] = useState(false);
+
     const criteria = {
-      natural_beauty: [
-        'Makeup is flattering and age appropriate',
-        'hairstyle is flattering and age appropriate',
-        'Facial Beauty'
-      ],
-      personality: [
-        'The contestant enjoys being on stage.',
-        'Overall impression of the contestant',
-        'does he/she possess the presence of a King/Queen?'
-      ],
-      attire: [
-        'Attire is an appropriate style for the age division',
-        'Attire is becoming on the contestant (look at fit, style, color, etc.)',
-        'Attire fits the contestant well',
-        'Overall appearance complements the contestant.'
-      ],
-      stage_presence: [
-        'Poise and confidence while on stage.',
-        'Modeling (appropriate for age)',
-        'Display of true personality',
-        'Eye contact with judges and audience.'
+      beauty: [
+        'Natural Beauty', 
+        'Personality', 
+        'Attire', 
+        'Stage Presence'
       ],
       photogenic: [
         'Photo Score'
@@ -867,8 +837,77 @@ function App() {
         'Overall Effect'
       ]
     };
+
+    const criteriaInfo = {
+      'Natural Beauty': [
+        'Makeup is flattering and age appropriate',
+        'hairstyle is flattering and age appropriate',
+        'Facial Beauty'
+      ],
+      'Personality': [
+        'The contestant enjoys being on stage.',
+        'Overall impression of the contestant',
+        'does he/she possess the presence of a King/Queen?'
+      ],
+      'Attire': [
+        'Attire is an appropriate style for the age division',
+        'Attire is becoming on the contestant (look at fit, style, color, etc.)',
+        'Attire fits the contestant well',
+        'Overall appearance complements the contestant.'
+      ],
+      'Stage Presence': [
+        'Poise and confidence while on stage.',
+        'Modeling (appropriate for age)',
+        'Display of true personality',
+        'Eye contact with judges and audience.'
+      ],
+      'Photo Score': [],
+      'Creativity': [],
+      'Fit': [],
+      'Theme Adherence': [],
+      'Overall Effect': []
+    };
     
     const activePageant = getActivePageant(); 
+
+    // ADDED: Load this judge's scores
+    useEffect(() => {
+      if (activePageantId && user) {
+        const loadMyScores = async () => {
+          try {
+            const response = await api.getScoresByJudge(activePageantId, user);
+            setMyScores(response.data);
+          } catch (error) {
+            console.error("Error loading judge's scores:", error);
+          }
+        };
+        loadMyScores();
+      }
+    }, [activePageantId, user]); // Reload if pageant or judge changes
+
+    // ADDED: Check if score is already submitted when selection changes
+    useEffect(() => {
+      if (selectedContestant && category) {
+        const foundScore = myScores.find(
+          s => s.contestant_id === selectedContestant.id && s.category === category
+        );
+        if (foundScore) {
+          setIsSubmitted(true);
+          setSubmittedScore(foundScore);
+          setCurrentScores(foundScore.scores); // Load existing scores
+          setComments(foundScore.comments || '');
+        } else {
+          setIsSubmitted(false);
+          setSubmittedScore(null);
+          setCurrentScores({});
+          setComments('');
+        }
+      } else {
+        setIsSubmitted(false);
+        setSubmittedScore(null);
+      }
+    }, [selectedContestant, category, myScores]);
+
 
     const divisionContestants = useMemo(() => {
       let baseContestants = selectedDivision 
@@ -888,8 +927,10 @@ function App() {
     }, [selectedDivision, category, contestants, activePageantId]); 
 
     const handleScoreChange = (criterion, value) => {
+      if (isSubmitted) return; // Don't allow changes if submitted
+
       const numValue = parseFloat(value);
-      const maxScore = category === 'photogenic' ? 100 : 25; 
+      const maxScore = category === 'photogenic' ? 100 : 25;
       
       if (!isNaN(numValue) && numValue >= 0 && numValue <= maxScore) {
         setCurrentScores(prev => ({
@@ -900,7 +941,7 @@ function App() {
     };
 
     const submitScore = async () => {
-      if (!selectedContestant) return;
+      if (!selectedContestant || isSubmitted) return;
       
       const total = Object.values(currentScores).reduce((a, b) => a + b, 0);
       
@@ -915,19 +956,28 @@ function App() {
           comments: comments.trim() || null
         });
         
-        setCurrentScores({});
-        setComments('');
-        setSelectedContestant(null);
-        await loadScores();
+        // Reload this judge's scores to include the new one
+        const response = await api.getScoresByJudge(activePageantId, user);
+        setMyScores(response.data);
+        
         alert('Score submitted successfully!');
+        // Don't reset, the useEffect will now show the read-only view
+        
       } catch (error) {
         console.error('Error submitting score:', error);
-        alert('Error submitting score');
+        alert('Error submitting score. It may have already been submitted.');
       }
     };
     
     const currentTotal = Object.values(currentScores).reduce((a, b) => a + b, 0);
-    const maxTotal = category === 'photogenic' ? 100 : (criteria[category]?.length || 0) * 25;
+    let maxTotal = 100; // Default
+    if (category === 'photogenic') {
+      maxTotal = 100;
+    } else if (category === 'beauty') {
+      maxTotal = 25 * 4;
+    } else if (category === 'casual_wear') {
+      maxTotal = 25 * 4;
+    }
 
 
     if (!activePageantId) {
@@ -957,8 +1007,7 @@ function App() {
           <label className="block mb-2 font-semibold">Select Category:</label>
           
           <div className="flex space-x-2 mb-4">
-            {Object.keys(criteria).map(cat => {
-              // HIDE casual_wear button if pageant does not have it enabled
+            {['beauty', 'photogenic', 'casual_wear'].map(cat => {
               if (cat === 'casual_wear' && activePageant && !activePageant.enable_casual_wear) {
                 return null;
               }
@@ -968,9 +1017,7 @@ function App() {
                   key={cat}
                   onClick={() => {
                     setCategory(cat);
-                    setSelectedContestant(null);
-                    setCurrentScores({});
-                    setComments('');
+                    setSelectedContestant(null); // This will trigger useEffect
                   }}
                   className={`px-4 py-2 rounded capitalize ${category === cat ? 'bg-purple-600 text-white' : 'bg-gray-200'}`}
                 >
@@ -985,9 +1032,7 @@ function App() {
             value={selectedDivision}
             onChange={(e) => {
               setSelectedDivision(e.target.value);
-              setSelectedContestant(null);
-              setCurrentScores({});
-              setComments('');
+              setSelectedContestant(null); // This will trigger useEffect
             }}
             className="w-full border rounded p-2 mb-4"
           >
@@ -1004,9 +1049,7 @@ function App() {
                 value={selectedContestant?.id || ''}
                 onChange={(e) => {
                   const contestant = divisionContestants.find(c => c.id === parseInt(e.target.value));
-                  setSelectedContestant(contestant);
-                  setCurrentScores({});
-                  setComments('');
+                  setSelectedContestant(contestant); // This will trigger useEffect
                 }}
                 className="w-full border rounded p-2 mb-4"
               >
@@ -1032,7 +1075,15 @@ function App() {
 
           {selectedContestant && (
             <div className="space-y-4">
-              <div className="bg-purple-50 p-4 rounded">
+              {/* MODIFIED: Show submitted message */}
+              {isSubmitted && (
+                <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4" role="alert">
+                  <p className="font-bold flex items-center"><Lock className="w-4 h-4 mr-2" />Submitted</p>
+                  <p>This score is locked. Contact the tabulator to make changes.</p>
+                </div>
+              )}
+              
+              <div className={`p-4 rounded ${isSubmitted ? 'bg-gray-100' : 'bg-purple-50'}`}>
                 
                 <h3 className="text-xl font-semibold mb-4 capitalize">
                   Score #{selectedContestant.contestant_number} - {selectedContestant.name} - {category.replace('_', ' ')}
@@ -1043,6 +1094,13 @@ function App() {
                     <label className="block mb-1 font-medium">
                       {criterion} {category === 'photogenic' ? '(0-100)' : '(0-25)'}
                     </label>
+                    
+                    {criteriaInfo[criterion] && criteriaInfo[criterion].length > 0 && (
+                      <ul className="text-xs text-gray-600 list-disc list-inside mb-2">
+                        {criteriaInfo[criterion].map(info => <li key={info}>{info}</li>)}
+                      </ul>
+                    )}
+                    
                     <input
                       type="number"
                       min="0"
@@ -1051,17 +1109,22 @@ function App() {
                       value={currentScores[criterion] !== undefined ? currentScores[criterion] : ''}
                       onChange={(e) => handleScoreChange(criterion, e.target.value)}
                       className="w-full border rounded p-2"
+                      readOnly={isSubmitted} // ADDED: Read-only if submitted
+                      disabled={isSubmitted} // ADDED: Disable if submitted
                     />
                   </div>
                 ))}
+
                 <div className="mb-4">
                   <label className="block mb-1 font-medium">Comments (Optional)</label>
                   <textarea
                     value={comments}
-                    onChange={(e) => setComments(e.target.value)}
+                    onChange={(e) => { if (!isSubmitted) setComments(e.target.value); }}
                     className="w-full border rounded p-2"
                     rows="3"
                     placeholder="Add any comments here..."
+                    readOnly={isSubmitted} // ADDED
+                    disabled={isSubmitted} // ADDED
                   />
                 </div>
                 <div className="mt-4 pt-4 border-t">
@@ -1070,13 +1133,17 @@ function App() {
                   </div>
                 </div>
               </div>
-              <button
-                onClick={submitScore}
-                disabled={Object.keys(currentScores).length !== criteria[category].length}
-                className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white py-3 rounded font-semibold"
-              >
-                Submit Score
-              </button>
+              
+              {/* Hide button if submitted */}
+              {!isSubmitted && (
+                <button
+                  onClick={submitScore}
+                  disabled={Object.keys(currentScores).length !== criteria[category].length}
+                  className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white py-3 rounded font-semibold"
+                >
+                  Submit Score
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1084,28 +1151,39 @@ function App() {
     );
   };
   
+  // ==========================================================
+  // ## TabulatorDashboard (MODIFIED)
+  // ==========================================================
   const TabulatorDashboard = () => {
     const [tieBreakRequest, setTieBreakRequest] = useState(null);
     const [divisionFilter, setDivisionFilter] = useState('');
     const activePageant = getActivePageant();
+    
+    // ADDED: State for this dashboard
+    const [emailStatus, setEmailStatus] = useState('');
+    const [editingScore, setEditingScore] = useState(null); // Holds the score object to edit
 
-    const scoresByContestant = useMemo(() => {
+    // Calculate contestant list, sorted by total score
+    const sortedContestants = useMemo(() => {
       const scoresByC = {};
       
       scores.forEach(score => {
         const contestant = contestants.find(c => c.id === score.contestant_id);
         
         if (contestant && contestant.pageant_id === activePageantId) {
+          // Apply division filter
           if (divisionFilter && contestant.division !== divisionFilter) {
             return; 
           }
           
           if (!scoresByC[score.contestant_id]) {
             scoresByC[score.contestant_id] = {
+              id: contestant.id,
               name: contestant.name,
               number: contestant.contestant_number,
               division: contestant.division,
-              categories: {}
+              categories: {},
+              finalTotal: 0 // ADDED: Final total score
             };
           }
           if (!scoresByC[score.contestant_id].categories[score.category]) {
@@ -1114,13 +1192,27 @@ function App() {
           scoresByC[score.contestant_id].categories[score.category].push(score);
         }
       });
-      return scoresByC;
+
+      // Calculate totals and return sorted array
+      const contestantArray = Object.values(scoresByC);
+      contestantArray.forEach(con => {
+        let total = 0;
+        Object.values(con.categories).forEach(catScores => {
+          total += catScores.reduce((sum, s) => sum + s.total, 0);
+        });
+        con.finalTotal = total;
+      });
+
+      // Sort by finalTotal, highest to lowest
+      return contestantArray.sort((a, b) => b.finalTotal - a.finalTotal);
+
     }, [scores, contestants, activePageantId, divisionFilter]); 
 
+    // Calculate ties
     const ties = useMemo(() => {
       const categoryTotals = {};
       
-      Object.entries(scoresByContestant).forEach(([contestantId, data]) => {
+      sortedContestants.forEach(data => { // Use sortedContestants
         Object.entries(data.categories).forEach(([category, catScores]) => {
           const categoryKey = category.replace('_', ' ');
           
@@ -1129,7 +1221,7 @@ function App() {
           const total = catScores.reduce((sum, s) => sum + s.total, 0);
           
           if (!categoryTotals[categoryKey][total]) categoryTotals[categoryKey][total] = [];
-          categoryTotals[categoryKey][total].push({ contestantId, name: data.name, number: data.number });
+          categoryTotals[categoryKey][total].push({ contestantId: data.id, name: data.name, number: data.number });
         });
       });
 
@@ -1142,7 +1234,43 @@ function App() {
         });
       });
       return ties;
-    }, [scoresByContestant]); 
+    }, [sortedContestants]); // Depends on the filtered & sorted scores
+
+    // ADDED: Validation logic
+    const divisionValidation = useMemo(() => {
+      if (!divisionFilter) return { isValid: false, message: 'Select a division to validate.' };
+
+      const pageantCategories = ['beauty', 'photogenic'];
+      if (activePageant && activePageant.enable_casual_wear) {
+        pageantCategories.push('casual_wear');
+      }
+      
+      const divContestants = contestants.filter(
+        c => c.pageant_id === activePageantId && c.division === divisionFilter && c.checked_in
+      );
+      
+      if(divContestants.length === 0) return { isValid: false, message: 'No checked-in contestants in this division.' };
+
+      const divScores = scores.filter(s => 
+        divContestants.some(c => c.id === s.contestant_id)
+      );
+
+      let requiredScores = 0;
+      divContestants.forEach(c => {
+        if (c.beauty) requiredScores += 3; // 3 judges
+        if (c.photogenic) requiredScores += 3;
+        if (c.casual_wear && activePageant.enable_casual_wear) requiredScores += 3;
+      });
+      
+      const actualScores = divScores.length;
+
+      if (actualScores < requiredScores) {
+        return { isValid: false, message: `Missing ${requiredScores - actualScores} scores for this division.` };
+      }
+      
+      return { isValid: true, message: 'All scores are in for this division.' };
+
+    }, [divisionFilter, contestants, scores, activePageant, activePageantId]);
 
     const requestTieBreak = (tie) => {
       setTieBreakRequest({
@@ -1151,6 +1279,108 @@ function App() {
       });
     };
     
+    // ADDED: Send Scores button logic
+    const handleSendScores = async () => {
+      if (!divisionValidation.isValid) {
+        alert("Cannot send scores: " + divisionValidation.message);
+        return;
+      }
+      
+      setEmailStatus('Sending score sheets... This may take a moment.');
+      setLoading(true);
+      
+      try {
+        const response = await api.sendScoreSheets(activePageantId, divisionFilter);
+        setEmailStatus(`Successfully sent ${response.data.sent} score sheets for ${divisionFilter}!`);
+      } catch (error) {
+        console.error('Error sending score sheets:', error);
+        setEmailStatus('An error occurred. Please check server logs.');
+      } finally {
+        setLoading(false);
+        setTimeout(() => setEmailStatus(''), 5000); 
+      }
+    };
+    
+    // ADDED: Score Edit Modal
+    const ScoreEditModal = ({ score, onClose, onSave }) => {
+      const [newTotal, setNewTotal] = useState(score.total);
+      const [newComments, setNewComments] = useState(score.comments || '');
+      const [newScores, setNewScores] = useState(score.scores);
+
+      const handleSave = async () => {
+        try {
+          await api.updateScore(score.id, {
+            total: parseFloat(newTotal),
+            comments: newComments,
+            scores: newScores
+          });
+          onSave(); // Will trigger reload
+          onClose();
+        } catch (err) {
+          alert('Failed to update score.');
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="font-bold text-xl mb-4">Edit Score</h3>
+            <p className="mb-2">Judge: <span className="font-medium">{score.judge_name}</span></p>
+            <p className="mb-4">Category: <span className="font-medium capitalize">{score.category.replace('_', ' ')}</span></p>
+            
+            {/* Allow editing individual criteria */}
+            <div className="space-y-2 mb-4">
+              {Object.entries(newScores).map(([key, value]) => (
+                <div key={key} className="flex justify-between items-center">
+                  <label>{key}</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={value}
+                    onChange={(e) => {
+                      const updatedScores = {...newScores, [key]: parseFloat(e.target.value) || 0};
+                      setNewScores(updatedScores);
+                      // Recalculate total
+                      setNewTotal(Object.values(updatedScores).reduce((a, b) => a + b, 0));
+                    }}
+                    className="w-24 border rounded p-1"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="mb-4">
+              <label className="block font-medium mb-1">Total Score (Read-only)</label>
+              <input
+                type="number"
+                value={newTotal}
+                readOnly
+                disabled
+                className="w-full border rounded p-2 bg-gray-100"
+              />
+            </div>
+            <div className="mb-4">
+              <label className="block font-medium mb-1">Comments</label>
+              <textarea
+                value={newComments}
+                onChange={(e) => setNewComments(e.target.value)}
+                className="w-full border rounded p-2"
+                rows="3"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleSave} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded">
+                Save Changes
+              </button>
+              <button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
     if (!activePageantId) {
       return (
         <div className="p-6 max-w-6xl mx-auto">
@@ -1164,6 +1394,14 @@ function App() {
 
     return (
       <div className="p-6 max-w-6xl mx-auto">
+        {editingScore && (
+          <ScoreEditModal
+            score={editingScore}
+            onClose={() => setEditingScore(null)}
+            onSave={() => loadAllScores()} // Reload all scores on save
+          />
+        )}
+      
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-3xl font-bold text-gray-800">Tabulator Dashboard</h2>
@@ -1174,12 +1412,50 @@ function App() {
           </button>
         </div>
 
+        {/* Validation & Send Scores Section */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h3 className="font-bold text-xl mb-4">Division Validation & Send Scores</h3>
+          <select
+            value={divisionFilter}
+            onChange={(e) => setDivisionFilter(e.target.value)}
+            className="w-full border rounded p-2 mb-4"
+          >
+            <option value="">-- Select Division to Validate --</option>
+            {divisions.map(div => (
+              <option key={div} value={div}>{div}</option>
+            ))}
+          </select>
+
+          {divisionFilter && (
+            <div className={`p-4 rounded mb-4 ${divisionValidation.isValid ? 'bg-green-100 border-green-300' : 'bg-amber-50 border-amber-300'}`}>
+              <p className={`font-medium ${divisionValidation.isValid ? 'text-green-800' : 'text-amber-800'}`}>
+                {divisionValidation.message}
+              </p>
+            </div>
+          )}
+
+          <button
+            onClick={handleSendScores}
+            disabled={!divisionValidation.isValid || loading}
+            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
+          >
+            <Mail className="w-5 h-5" />
+            <span>{loading ? 'Sending...' : `Send Scores for ${divisionFilter || 'Division'}`}</span>
+          </button>
+          {emailStatus && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4 text-center">
+              <p className="text-blue-800 font-medium">{emailStatus}</p>
+            </div>
+          )}
+        </div>
+
+
         {ties.length > 0 && (
           <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-6 mb-6">
             <div className="flex items-start space-x-3">
               <AlertTriangle className="w-6 h-6 text-amber-600 mt-1" />
               <div className="flex-1">
-                <h3 className="font-bold text-lg text-amber-900 mb-2">Ties Detected</h3>
+                <h3 className="font-bold text-lg text-amber-900 mb-2">Ties Detected in {divisionFilter || 'All Divisions'}</h3>
                 {ties.map((tie, idx) => (
                   <div key={idx} className="bg-white rounded p-3 mb-2">
                     <p className="font-medium capitalize">
@@ -1204,7 +1480,7 @@ function App() {
             <h3 className="font-bold text-lg mb-2">Tie Break Instructions</h3>
             <p className="mb-4">{tieBreakRequest.instructions}</p>
             <p className="text-sm text-gray-700">
-              Instruct judges to review and adjust scores. Judges should inform you which score to change.
+              Instruct judges to review scores. You can manually edit a score below to resolve the tie.
             </p>
             <button
               onClick={() => setTieBreakRequest(null)}
@@ -1217,33 +1493,30 @@ function App() {
 
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="p-4 bg-gray-100 border-b flex justify-between items-center">
-            <h3 className="font-semibold text-lg">All Scores</h3>
-            <select
-              value={divisionFilter}
-              onChange={(e) => setDivisionFilter(e.target.value)}
-              className="border rounded px-2 py-1 text-sm"
-            >
-              <option value="">All Divisions</option>
-              {divisions.map(div => (
-                <option key={div} value={div}>{div}</option>
-              ))}
-            </select>
+            <h3 className="font-semibold text-lg">Scores (Sorted High to Low)</h3>
+            {/* Filter is now at the top in the validation box */}
           </div>
 
           <div className="p-4 space-y-6">
-            {Object.keys(scoresByContestant).length === 0 ? (
+            {sortedContestants.length === 0 ? (
               <p className="text-gray-500 text-center py-8">
                 {divisionFilter 
                   ? 'No scores submitted for this division' 
-                  : 'No scores submitted yet'}
+                  : 'Select a division to view scores'}
               </p>
             ) : (
-              Object.entries(scoresByContestant).map(([contestantId, data]) => (
-                <div key={contestantId} className="border rounded-lg p-4">
-                  <h4 className="font-bold text-lg mb-1">
-                    #{data.number} - {data.name}
-                  </h4>
+              sortedContestants.map((data) => (
+                <div key={data.id} className="border rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-bold text-lg">
+                      #{data.number} - {data.name}
+                    </h4>
+                    <span className="text-2xl font-bold text-purple-600">
+                      Total: {data.finalTotal.toFixed(1)}
+                    </span>
+                  </div>
                   <p className="text-sm text-gray-600 mb-3">Division: {data.division}</p>
+                  
                   {Object.entries(data.categories).map(([category, catScores]) => {
                     const totalScore = catScores.reduce((sum, s) => sum + s.total, 0);
                     const avgScore = (totalScore / catScores.length).toFixed(1);
@@ -1260,7 +1533,15 @@ function App() {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                           {catScores.map((score, idx) => (
                             <div key={idx} className="bg-gray-50 p-3 rounded">
-                              <div className="text-sm font-medium">{score.judge_name}</div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm font-medium">{score.judge_name}</span>
+                                <button
+                                  onClick={() => setEditingScore(score)}
+                                  className="text-blue-600 hover:text-blue-800"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                              </div>
                               <div className="text-2xl font-bold text-purple-600">{score.total.toFixed(1)}</div>
                               <div className="text-xs text-gray-500 mt-1">
                                 {Object.entries(score.scores).map(([k, v]) => `${k}: ${v}`).join(', ')}

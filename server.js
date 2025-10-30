@@ -5,7 +5,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const os = require('os');
 
-// ADDED: Dependencies for PDF and Mail
+// Dependencies for PDF and Mail
 require('dotenv').config(); // Load variables from .env
 const nodemailer = require('nodemailer');
 const PDFDocument = require('pdfkit');
@@ -22,7 +22,6 @@ app.use(express.static(path.join(__dirname, 'client/build')));
 // ==========================================================
 // ## NODEMAILER TRANSPORTER
 // ==========================================================
-// Create a reusable transporter object using SMTP info from .env
 let transporter;
 if (process.env.SMTP_HOST) {
   transporter = nodemailer.createTransport({
@@ -58,7 +57,6 @@ const db = new sqlite3.Database('./pageant.db', (err) => {
   }
 });
 
-// ADDED: Promise wrapper for db.all to use with async/await
 function dbAllPromise(sql, params) {
   return new Promise((resolve, reject) => {
     db.all(sql, params, (err, rows) => {
@@ -109,7 +107,7 @@ function initializeDatabase() {
       FOREIGN KEY (pageant_id) REFERENCES pageants(id)
     )`);
     
-    // Migration for old 'costume' column
+    // Migrations
     db.all("PRAGMA table_info(contestants)", (err, columns) => {
       const hasCostume = columns.some(col => col.name === 'costume');
       const hasCasualWear = columns.some(col => col.name === 'casual_wear');
@@ -123,7 +121,6 @@ function initializeDatabase() {
       }
     });
     
-    // Migration for 'enable_casual_wear' on pageants
     db.all("PRAGMA table_info(pageants)", (err, columns) => {
        if (!columns.some(col => col.name === 'enable_casual_wear')) {
          console.log("Adding 'enable_casual_wear' to pageants table...");
@@ -152,14 +149,12 @@ function initializeDatabase() {
 // ==========================================================
 // ## API ENDPOINTS
 // ==========================================================
-
-// Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server Error:', err);
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-// Pageants
+// Pageants (Unchanged)
 app.get('/api/pageants', (req, res) => {
   db.all('SELECT * FROM pageants ORDER BY created_at DESC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -193,7 +188,7 @@ app.get('/api/pageants/active', (req, res) => {
   });
 });
 
-// Contestants
+// Contestants (Unchanged)
 app.get('/api/contestants/:pageantId', (req, res) => {
   const { pageantId } = req.params;
   db.all('SELECT * FROM contestants WHERE pageant_id = ? ORDER BY contestant_number', [pageantId], (err, rows) => {
@@ -282,52 +277,93 @@ app.get('/api/divisions/:pageantId', (req, res) => {
   });
 });
 
-// Scores
+// ==========================================================
+// ## SCORES API (MODIFIED)
+// ==========================================================
+
+// Get all scores for a pageant (for Tabulator)
 app.get('/api/scores/:pageantId', (req, res) => {
   const { pageantId } = req.params;
   db.all('SELECT * FROM scores WHERE pageant_id = ?', [pageantId], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows.map(row => ({
       ...row,
-      scores: JSON.parse(row.scores)
+      scores: JSON.parse(row.scores) // Parse the JSON string
     })));
   });
 });
 
+// ADDED: Get all scores for a specific judge (for Judge read-only view)
+app.get('/api/scores/judge/:pageantId/:judgeName', (req, res) => {
+  const { pageantId, judgeName } = req.params;
+  db.all('SELECT * FROM scores WHERE pageant_id = ? AND judge_name = ?', [pageantId, judgeName], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows.map(row => ({
+      ...row,
+      scores: JSON.parse(row.scores) // Parse the JSON string
+    })));
+  });
+});
+
+// Submit a new score (for Judge)
 app.post('/api/scores', (req, res) => {
   const { pageant_id, contestant_id, judge_name, category, scores, total, comments } = req.body;
-  const sql = `INSERT INTO scores (pageant_id, contestant_id, judge_name, category, scores, total, comments) 
-               VALUES (?, ?, ?, ?, ?, ?, ?)`;
-  db.run(sql, [pageant_id, contestant_id, judge_name, category, JSON.stringify(scores), total, comments || null], function(err) {
+  // Prevent duplicate submissions
+  const checkSql = 'SELECT id FROM scores WHERE pageant_id = ? AND contestant_id = ? AND judge_name = ? AND category = ?';
+  db.get(checkSql, [pageant_id, contestant_id, judge_name, category], (err, row) => {
+    if(err) return res.status(500).json({ error: err.message });
+    if(row) return res.status(409).json({ error: 'Score already submitted' });
+
+    const sql = `INSERT INTO scores (pageant_id, contestant_id, judge_name, category, scores, total, comments) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`;
+    db.run(sql, [pageant_id, contestant_id, judge_name, JSON.stringify(scores), total, comments || null], function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ id: this.lastID });
+    });
+  });
+});
+
+// ADDED: Update an existing score (for Tabulator)
+app.put('/api/scores/:id', (req, res) => {
+  const { id } = req.params;
+  const { scores, total, comments } = req.body;
+  
+  const sql = `UPDATE scores SET scores = ?, total = ?, comments = ? WHERE id = ?`;
+  
+  db.run(sql, [JSON.stringify(scores), total, comments, id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
-    res.json({ id: this.lastID });
+    res.json({ success: true, changed: this.changes });
   });
 });
 
 // ==========================================================
-// ## PDF Generation and Email Endpoint
+// ## PDF Generation and Email Endpoint (MODIFIED)
 // ==========================================================
+// MODIFIED: Now accepts a 'division' to send
 app.post('/api/scores/send', async (req, res) => {
   if (!transporter) {
     return res.status(500).json({ error: 'SMTP server is not configured. Emails disabled.' });
   }
 
-  const { pageantId } = req.body;
+  const { pageantId, division } = req.body; // Added division
   const PAGEANT_NAME = process.env.PAGEANT_NAME || "Pageant Score Sheet";
 
+  if (!division) {
+    return res.status(400).json({ error: 'A division must be selected to send scores.' });
+  }
+
   try {
-    const contestants = await dbAllPromise('SELECT * FROM contestants WHERE pageant_id = ? AND email IS NOT NULL AND email != ""', [pageantId]);
+    // MODIFIED: Query now filters by division
+    const contestants = await dbAllPromise('SELECT * FROM contestants WHERE pageant_id = ? AND division = ? AND email IS NOT NULL AND email != ""', [pageantId, division]);
     const allScores = await dbAllPromise('SELECT * FROM scores WHERE pageant_id = ?', [pageantId]);
 
     let sent = 0;
     for (const contestant of contestants) {
       const contestantScores = allScores.filter(s => s.contestant_id === contestant.id);
-      if (contestantScores.length === 0) continue; // Skip contestants with no scores
+      if (contestantScores.length === 0) continue; 
 
-      // Generate PDF in a buffer
       const pdfBuffer = await generateScoreSheetPdf(contestant, contestantScores, PAGEANT_NAME);
 
-      // Setup email data
       const mailOptions = {
         from: process.env.SMTP_FROM_EMAIL,
         to: contestant.email,
@@ -342,7 +378,6 @@ app.post('/api/scores/send', async (req, res) => {
         ],
       };
 
-      // Send mail
       try {
         await transporter.sendMail(mailOptions);
         console.log(`Email sent to ${contestant.email}`);
@@ -357,7 +392,7 @@ app.post('/api/scores/send', async (req, res) => {
   }
 });
 
-// PDF Generation Helper
+// PDF Generation Helper (Unchanged)
 function generateScoreSheetPdf(contestant, scores, pageantName) {
   return new Promise((resolve) => {
     const doc = new PDFDocument({ margin: 50 });
@@ -407,7 +442,7 @@ function generateScoreSheetPdf(contestant, scores, pageantName) {
         doc.text(`${score.judge_name}: ${score.total.toFixed(1)}`);
         
         // Add criteria breakdown
-        const criteriaScores = score.scores ? JSON.parse(score.scores) : {};
+        const criteriaScores = score.scores; // Already parsed
         doc.font('Helvetica-Oblique').list(Object.entries(criteriaScores).map(([key, value]) => `${key}: ${value}`), {
           bulletRadius: 2,
           indent: 20,
@@ -441,7 +476,6 @@ function generateScoreSheetPdf(contestant, scores, pageantName) {
 // ==========================================================
 // ## APP STARTUP
 // ==========================================================
-
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
 });
