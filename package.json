@@ -1,0 +1,25 @@
+{
+  "name": "pageant-scoring-system",
+  "version": "1.0.0",
+  "description": "Beauty Pageant Scoring System",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "cd client && npm run build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.7",
+    "pdfkit": "^0.13.0",
+    "papaparse": "^5.4.1",
+    "dotenv": "^16.3.1"
+  }
+}
