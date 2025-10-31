@@ -306,22 +306,45 @@ app.get('/api/scores/judge/:pageantId/:judgeName', (req, res) => {
 });
 
 // Submit a new score (for Judge)
+// Submit a new score (for Judge)
 app.post('/api/scores', (req, res) => {
   const { pageant_id, contestant_id, judge_name, category, scores, total, comments } = req.body;
-  // Prevent duplicate submissions
-  const checkSql = 'SELECT id FROM scores WHERE pageant_id = ? AND contestant_id = ? AND judge_name = ? AND category = ?';
-  db.get(checkSql, [pageant_id, contestant_id, judge_name, category], (err, row) => {
-    if(err) return res.status(500).json({ error: err.message });
-    if(row) return res.status(409).json({ error: 'Score already submitted' });
 
-    const sql = `INSERT INTO scores (pageant_id, contestant_id, judge_name, category, scores, total, comments) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?)`;
-    db.run(sql, [pageant_id, contestant_id, judge_name, JSON.stringify(scores), total, comments || null], function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ id: this.lastID });
-    });
+  // ✅ Defensive check for missing or invalid total
+  const safeTotal = Number(total);
+  if (isNaN(safeTotal)) {
+    console.warn('Invalid total received:', total, '-> defaulting to 0');
+  }
+
+  const finalTotal = isNaN(safeTotal) ? 0 : safeTotal;
+
+  // Prevent duplicate submissions
+  const checkSql = `
+    SELECT id FROM scores
+    WHERE pageant_id = ? AND contestant_id = ? AND judge_name = ? AND category = ?
+  `;
+  db.get(checkSql, [pageant_id, contestant_id, judge_name, category], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (row) return res.status(409).json({ error: 'Score already submitted' });
+
+    const sql = `
+      INSERT INTO scores (pageant_id, contestant_id, judge_name, category, scores, total, comments)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+    db.run(
+      sql,
+      [pageant_id, contestant_id, judge_name, category, JSON.stringify(scores || {}), finalTotal, comments || null],
+      function (err) {
+        if (err) {
+          console.error('Error inserting score:', err);
+          return res.status(500).json({ error: err.message });
+        }
+        res.json({ id: this.lastID });
+      }
+    );
   });
 });
+
 
 // ADDED: Update an existing score (for Tabulator)
 app.put('/api/scores/:id', (req, res) => {
