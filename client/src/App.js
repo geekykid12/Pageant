@@ -1872,7 +1872,8 @@ function App() {
 
   if (!user) return <LoginScreen />;
   if (user === 'Registrar') return <RegistrarDashboard />;
-  if (user.startsWith('Judge')) return <JudgeDashboard onScoreSubmitted={loadAllScores} />;
+  // Check if the selected user is in the dynamic judgeNames list
+  if (judgeNames.includes(user)) return <JudgeDashboard onScoreSubmitted={loadAllScores} />;
   if (user === 'Tabulator') return <TabulatorDashboard />;
   return null;
 }
