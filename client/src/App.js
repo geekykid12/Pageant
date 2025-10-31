@@ -969,7 +969,18 @@ function App() {
         });
         
         const response = await api.getScoresByJudge(activePageantId, user);
-        setMyScores(response.data);
+        
+        // Add the same normalization logic from your loadMyScores hook
+        let scoresArray = [];
+        if (Array.isArray(response.data)) {
+            scoresArray = response.data;
+        } else if (response.data?.scores && Array.isArray(response.data.scores)) {
+            scoresArray = response.data.scores;
+        } else {
+            console.warn("Unexpected scores response after submit:", response.data);
+        }
+        setMyScores(scoresArray);
+        
         console.log("Submitting score:", {
             currentScores,
             total,
