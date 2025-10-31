@@ -861,25 +861,24 @@ function App() {
     useEffect(() => {
         if (activePageantId && user) {
             const loadMyScores = async () => {
-            try {
-                const response = await api.getScoresByJudge(activePageantId, user);
+                try {
+                    const response = await api.getScoresByJudge(activePageantId, user);
 
-                // ✅ Ensure we always set an array, even if backend shape varies
-                let scoresData = [];
-                if (Array.isArray(response.data)) {
-                scoresData = response.data;
-                } else if (response.data?.scores && Array.isArray(response.data.scores)) {
-                scoresData = response.data.scores;
-                } else {
-                console.warn('Unexpected response shape for getScoresByJudge:', response.data);
+                    // ✅ Normalize response to always be an array
+                    let scoresArray = [];
+                    if (Array.isArray(response.data)) {
+                        scoresArray = response.data;
+                    } else if (response.data?.scores && Array.isArray(response.data.scores)) {
+                        scoresArray = response.data.scores;
+                    } else {
+                        console.warn("Unexpected scores response:", response.data);
+                    }
+                    setMyScores(scoresArray);
+                } catch (error) {
+                    console.error("Error loading judge's scores:", error);
+                    setMyScores([]); // fallback so .find() always works
                 }
-
-                setMyScores(scoresData);
-            } catch (error) {
-                console.error("Error loading judge's scores:", error);
-                setMyScores([]); // fallback
-            }
-            };
+                };
             loadMyScores();
         }
     }, [activePageantId, user]);
