@@ -54,8 +54,8 @@ export const getDivisions = (pageantId) => api.get(`/divisions/${pageantId}`);
 export const getScores = (pageantId) => api.get(`/scores/${pageantId}`);
 export const createScore = (data) => api.post('/scores', data);
 // ADDED: New endpoints
-export const updateScore = (id, data) => api.put(`/api/scores/${id}`, data);
-export const getScoresByJudge = (pageantId, judgeName) => api.get(`/api/scores/judge/${pageantId}/${judgeName}`);
+export const updateScore = (id, data) => api.put(`/scores/${id}`, data);
+export const getScoresByJudge = (pageantId, judgeName) => api.get(`/scores/judge/${pageantId}/${judgeName}`);
 
 // MODIFIED: Now sends division
 export const sendScoreSheets = (pageantId, division) => api.post('/scores/send', { pageantId, division });
