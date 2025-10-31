@@ -57,6 +57,19 @@ const db = new sqlite3.Database('./pageant.db', (err) => {
   }
 });
 
+function dbRunPromise(sql, params) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function(err) {
+      if (err) {
+        console.error('Database run error:', err);
+        reject(err);
+      } else {
+        resolve(this);
+      }
+    });
+  });
+}
+
 function dbAllPromise(sql, params) {
   return new Promise((resolve, reject) => {
     db.all(sql, params, (err, rows) => {
@@ -69,6 +82,20 @@ function dbAllPromise(sql, params) {
     });
   });
 }
+
+function dbGetPromise(sql, params) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) {
+        console.error('Database get error:', err);
+        reject(err);
+      } else {
+        resolve(row);
+      }
+    });
+  });
+}
+
 
 function initializeDatabase() {
   db.serialize(() => {
@@ -86,6 +113,10 @@ function initializeDatabase() {
       active BOOLEAN DEFAULT 0,
       completed BOOLEAN DEFAULT 0,
       enable_casual_wear BOOLEAN DEFAULT 0,
+      date TEXT,
+      divisions TEXT,
+      judges TEXT,
+      validated_divisions TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
@@ -95,6 +126,7 @@ function initializeDatabase() {
       contestant_number TEXT,
       name TEXT NOT NULL,
       email TEXT NOT NULL,
+      phone TEXT,
       division TEXT,
       beauty BOOLEAN DEFAULT 1,
       photogenic BOOLEAN DEFAULT 0,
@@ -109,22 +141,23 @@ function initializeDatabase() {
     
     // Migrations
     db.all("PRAGMA table_info(contestants)", (err, columns) => {
-      const hasCostume = columns.some(col => col.name === 'costume');
-      const hasCasualWear = columns.some(col => col.name === 'casual_wear');
-      if (hasCostume && !hasCasualWear) {
-        console.log("Renaming 'costume' to 'casual_wear'...");
-        db.run("ALTER TABLE contestants RENAME COLUMN costume TO casual_wear", (err) => {
-          if(err) console.error("Error renaming column:", err);
-        });
-      } else if (!hasCasualWear) {
-         db.run("ALTER TABLE contestants ADD COLUMN casual_wear BOOLEAN DEFAULT 0");
+      if (!columns.some(col => col.name === 'phone')) {
+         db.run("ALTER TABLE contestants ADD COLUMN phone TEXT");
       }
     });
     
     db.all("PRAGMA table_info(pageants)", (err, columns) => {
-       if (!columns.some(col => col.name === 'enable_casual_wear')) {
-         console.log("Adding 'enable_casual_wear' to pageants table...");
-         db.run("ALTER TABLE pageants ADD COLUMN enable_casual_wear BOOLEAN DEFAULT 0");
+       if (!columns.some(col => col.name === 'date')) {
+         db.run("ALTER TABLE pageants ADD COLUMN date TEXT");
+       }
+       if (!columns.some(col => col.name === 'divisions')) {
+         db.run("ALTER TABLE pageants ADD COLUMN divisions TEXT");
+       }
+       if (!columns.some(col => col.name === 'judges')) {
+         db.run("ALTER TABLE pageants ADD COLUMN judges TEXT");
+       }
+       if (!columns.some(col => col.name === 'validated_divisions')) {
+         db.run("ALTER TABLE pageants ADD COLUMN validated_divisions TEXT");
        }
     });
 
@@ -146,6 +179,16 @@ function initializeDatabase() {
   });
 }
 
+// Helper to parse JSON fields safely
+const parseJSONField = (field, defaultVal = []) => {
+  try {
+    const parsed = JSON.parse(field);
+    return parsed || defaultVal;
+  } catch (e) {
+    return defaultVal;
+  }
+};
+
 // ==========================================================
 // ## API ENDPOINTS
 // ==========================================================
@@ -154,19 +197,66 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-// Pageants (Unchanged)
+// Pageants
 app.get('/api/pageants', (req, res) => {
   db.all('SELECT * FROM pageants ORDER BY created_at DESC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
+    // Parse JSON fields before sending
+    res.json(rows.map(row => ({
+      ...row,
+      divisions: parseJSONField(row.divisions, []),
+      judges: parseJSONField(row.judges, []),
+      validated_divisions: parseJSONField(row.validated_divisions, [])
+    })));
   });
 });
 
 app.post('/api/pageants', (req, res) => {
-  const { name, enable_casual_wear } = req.body;
-  db.run('INSERT INTO pageants (name, enable_casual_wear) VALUES (?, ?)', [name, enable_casual_wear ? 1 : 0], function(err) {
+  const { name, enable_casual_wear, date, divisions, judges } = req.body;
+  
+  const divisionsJSON = JSON.stringify(divisions || []);
+  const judgesJSON = JSON.stringify(judges || ['Judge 1', 'Judge 2', 'Judge 3']); // Default judges
+  const validatedDivisionsJSON = JSON.stringify([]);
+
+  const sql = `INSERT INTO pageants (name, enable_casual_wear, date, divisions, judges, validated_divisions) 
+               VALUES (?, ?, ?, ?, ?, ?)`;
+  
+  db.run(sql, [name, enable_casual_wear ? 1 : 0, date || null, divisionsJSON, judgesJSON, validatedDivisionsJSON], function(err) {
     if (err) return res.status(500).json({ error: err.message });
-    res.json({ id: this.lastID, name, active: 0, completed: 0, enable_casual_wear: enable_casual_wear ? 1 : 0 });
+    res.json({ 
+      id: this.lastID, 
+      name, 
+      active: 0, 
+      completed: 0, 
+      enable_casual_wear: enable_casual_wear ? 1 : 0,
+      date: date || null,
+      divisions: divisions || [],
+      judges: judges || ['Judge 1', 'Judge 2', 'Judge 3'],
+      validated_divisions: []
+    });
+  });
+});
+
+// NEW: Update Pageant
+app.put('/api/pageants/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, enable_casual_wear, date, divisions, judges } = req.body;
+
+  const divisionsJSON = JSON.stringify(divisions || []);
+  const judgesJSON = JSON.stringify(judges || []);
+
+  const sql = `UPDATE pageants SET 
+               name = ?, 
+               enable_casual_wear = ?, 
+               date = ?, 
+               divisions = ?, 
+               judges = ? 
+               WHERE id = ?`;
+
+  db.run(sql, [name, enable_casual_wear ? 1 : 0, date, divisionsJSON, judgesJSON, id], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (this.changes === 0) return res.status(404).json({ error: 'Pageant not found' });
+    res.json({ success: true });
   });
 });
 
@@ -184,11 +274,48 @@ app.put('/api/pageants/:id/active', (req, res) => {
 app.get('/api/pageants/active', (req, res) => {
   db.get('SELECT * FROM pageants WHERE active = 1', [], (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
-    res.json(row || null);
+    if (!row) return res.json(null);
+    // Parse JSON fields
+    res.json({
+      ...row,
+      divisions: parseJSONField(row.divisions, []),
+      judges: parseJSONField(row.judges, []),
+      validated_divisions: parseJSONField(row.validated_divisions, [])
+    });
   });
 });
 
-// Contestants (Unchanged)
+// NEW: Validate Division (for Tabulator)
+app.post('/api/pageants/:pageantId/validate_division', async (req, res) => {
+  const { pageantId } = req.params;
+  const { division } = req.body;
+
+  if (!division) {
+    return res.status(400).json({ error: 'Division is required' });
+  }
+
+  try {
+    const pageant = await dbGetPromise('SELECT * FROM pageants WHERE id = ?', [pageantId]);
+    if (!pageant) {
+      return res.status(404).json({ error: 'Pageant not found' });
+    }
+
+    const validatedDivisions = parseJSONField(pageant.validated_divisions, []);
+    
+    if (!validatedDivisions.includes(division)) {
+      validatedDivisions.push(division);
+      const validatedDivisionsJSON = JSON.stringify(validatedDivisions);
+      await dbRunPromise('UPDATE pageants SET validated_divisions = ? WHERE id = ?', [validatedDivisionsJSON, pageantId]);
+    }
+    
+    res.json({ success: true, validated_divisions: validatedDivisions });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Contestants
 app.get('/api/contestants/:pageantId', (req, res) => {
   const { pageantId } = req.params;
   db.all('SELECT * FROM contestants WHERE pageant_id = ? ORDER BY contestant_number', [pageantId], (err, rows) => {
@@ -201,10 +328,10 @@ app.get('/api/contestants/:pageantId', (req, res) => {
 });
 
 app.post('/api/contestants', (req, res) => {
-  const { pageant_id, name, email, division, beauty, photogenic, casual_wear, raw_data } = req.body;
-  const sql = `INSERT INTO contestants (pageant_id, name, email, division, beauty, photogenic, casual_wear, raw_data) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-  db.run(sql, [pageant_id, name, email, division, beauty ? 1 : 0, photogenic ? 1 : 0, casual_wear ? 1 : 0, JSON.stringify(raw_data || {})], function(err) {
+  const { pageant_id, name, email, phone, division, beauty, photogenic, casual_wear, raw_data } = req.body;
+  const sql = `INSERT INTO contestants (pageant_id, name, email, phone, division, beauty, photogenic, casual_wear, raw_data) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  db.run(sql, [pageant_id, name, email, phone || null, division, beauty ? 1 : 0, photogenic ? 1 : 0, casual_wear ? 1 : 0, JSON.stringify(raw_data || {})], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ id: this.lastID });
   });
@@ -212,9 +339,9 @@ app.post('/api/contestants', (req, res) => {
 
 app.put('/api/contestants/:id', (req, res) => {
   const { id } = req.params;
-  const { name, email, division, beauty, photogenic, casual_wear, contestant_number } = req.body;
-  const sql = `UPDATE contestants SET name = ?, email = ?, division = ?, beauty = ?, photogenic = ?, casual_wear = ?, contestant_number = ? WHERE id = ?`;
-  db.run(sql, [name, email, division, beauty ? 1 : 0, photogenic ? 1 : 0, casual_wear ? 1 : 0, contestant_number, id], function(err) {
+  const { name, email, phone, division, beauty, photogenic, casual_wear, contestant_number } = req.body;
+  const sql = `UPDATE contestants SET name = ?, email = ?, phone = ?, division = ?, beauty = ?, photogenic = ?, casual_wear = ?, contestant_number = ? WHERE id = ?`;
+  db.run(sql, [name, email, phone || null, division, beauty ? 1 : 0, photogenic ? 1 : 0, casual_wear ? 1 : 0, contestant_number, id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ success: true });
   });
@@ -269,16 +396,23 @@ app.put('/api/contestants/:id/payment', (req, res) => {
   });
 });
 
-app.get('/api/divisions/:pageantId', (req, res) => {
+// MODIFIED: Get divisions from pageant table
+app.get('/api/divisions/:pageantId', async (req, res) => {
   const { pageantId } = req.params;
-  db.all('SELECT DISTINCT division FROM contestants WHERE pageant_id = ? AND division IS NOT NULL AND division != "" ORDER BY division', [pageantId], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows.map(r => r.division));
-  });
+  try {
+    const row = await dbGetPromise('SELECT divisions FROM pageants WHERE id = ?', [pageantId]);
+    if (row) {
+      res.json(parseJSONField(row.divisions, []));
+    } else {
+      res.json([]);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ==========================================================
-// ## SCORES API (MODIFIED)
+// ## SCORES API
 // ==========================================================
 
 // Get all scores for a pageant (for Tabulator)
@@ -293,7 +427,7 @@ app.get('/api/scores/:pageantId', (req, res) => {
   });
 });
 
-// ADDED: Get all scores for a specific judge (for Judge read-only view)
+// Get all scores for a specific judge (for Judge read-only view)
 app.get('/api/scores/judge/:pageantId/:judgeName', (req, res) => {
   const { pageantId, judgeName } = req.params;
   db.all('SELECT * FROM scores WHERE pageant_id = ? AND judge_name = ?', [pageantId, judgeName], (err, rows) => {
@@ -306,19 +440,15 @@ app.get('/api/scores/judge/:pageantId/:judgeName', (req, res) => {
 });
 
 // Submit a new score (for Judge)
-// Submit a new score (for Judge)
 app.post('/api/scores', (req, res) => {
   const { pageant_id, contestant_id, judge_name, category, scores, total, comments } = req.body;
 
-  // ✅ Defensive check for missing or invalid total
   const safeTotal = Number(total);
   if (isNaN(safeTotal)) {
     console.warn('Invalid total received:', total, '-> defaulting to 0');
   }
-
   const finalTotal = isNaN(safeTotal) ? 0 : safeTotal;
 
-  // Prevent duplicate submissions
   const checkSql = `
     SELECT id FROM scores
     WHERE pageant_id = ? AND contestant_id = ? AND judge_name = ? AND category = ?
@@ -346,7 +476,7 @@ app.post('/api/scores', (req, res) => {
 });
 
 
-// ADDED: Update an existing score (for Tabulator)
+// Update an existing score (for Tabulator)
 app.put('/api/scores/:id', (req, res) => {
   const { id } = req.params;
   const { scores, total, comments } = req.body;
@@ -360,15 +490,14 @@ app.put('/api/scores/:id', (req, res) => {
 });
 
 // ==========================================================
-// ## PDF Generation and Email Endpoint (MODIFIED)
+// ## PDF Generation and Email Endpoint (Unchanged logic)
 // ==========================================================
-// MODIFIED: Now accepts a 'division' to send
 app.post('/api/scores/send', async (req, res) => {
   if (!transporter) {
     return res.status(500).json({ error: 'SMTP server is not configured. Emails disabled.' });
   }
 
-  const { pageantId, division } = req.body; // Added division
+  const { pageantId, division } = req.body; 
   const PAGEANT_NAME = process.env.PAGEANT_NAME || "Pageant Score Sheet";
 
   if (!division) {
@@ -376,7 +505,6 @@ app.post('/api/scores/send', async (req, res) => {
   }
 
   try {
-    // MODIFIED: Query now filters by division
     const contestants = await dbAllPromise('SELECT * FROM contestants WHERE pageant_id = ? AND division = ? AND email IS NOT NULL AND email != ""', [pageantId, division]);
     const allScores = await dbAllPromise('SELECT * FROM scores WHERE pageant_id = ?', [pageantId]);
 

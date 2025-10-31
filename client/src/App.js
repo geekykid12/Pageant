@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Upload, Award, Mail, Plus, AlertTriangle, Search, Edit2, X, CheckSquare, Lock } from 'lucide-react';
+import { Upload, Award, Mail, Plus, AlertTriangle, Search, Edit2, X, CheckSquare, Lock, Calendar, Users, UserCheck } from 'lucide-react';
 import * as api from './services/api';
 
 function App() {
@@ -14,6 +14,17 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [divisions, setDivisions] = useState([]);
 
+  const activePageant = useMemo(() => {
+    return pageants.find(p => p.id === activePageantId) || null;
+  }, [pageants, activePageantId]);
+
+  const judgeNames = useMemo(() => {
+    if (activePageant && activePageant.judges && activePageant.judges.length > 0) {
+      return activePageant.judges;
+    }
+    return ['Judge 1', 'Judge 2', 'Judge 3']; // Fallback
+  }, [activePageant]);
+
   useEffect(() => {
     loadPageants();
   }, []);
@@ -23,6 +34,10 @@ function App() {
       loadContestants();
       loadAllScores(); 
       loadDivisions();
+    } else {
+      setContestants([]);
+      setScores([]);
+      setDivisions([]);
     }
   }, [activePageantId]);
 
@@ -31,7 +46,13 @@ function App() {
       const response = await api.getPageants();
       setPageants(response.data);
       const active = response.data.find(p => p.active);
-      if (active) setActivePageantId(active.id);
+      if (active) {
+        setActivePageantId(active.id);
+      } else if (response.data.length > 0) {
+        // If no active, set first as active by default? Or just set ID?
+        // Let's just set the ID, but not call the API
+        setActivePageantId(response.data[0]?.id || null);
+      }
     } catch (error) {
       console.error('Error loading pageants:', error);
     }
@@ -64,7 +85,7 @@ function App() {
     }
   };
 
-  const getActivePageant = () => pageants.find(p => p.id === activePageantId);
+  // const getActivePageant = () => pageants.find(p => p.id === activePageantId);
   const getActiveContestants = () => contestants.filter(c => c.pageant_id === activePageantId);
   const getCheckedInContestants = () => getActiveContestants().filter(c => c.checked_in);
 
@@ -77,7 +98,7 @@ function App() {
           <p className="text-gray-600 mt-2">Select your role to continue</p>
         </div>
         <div className="space-y-3">
-          {['Registrar', 'Judge 1', 'Judge 2', 'Judge 3', 'Tabulator'].map(role => (
+          {['Registrar', ...judgeNames, 'Tabulator'].map(role => (
             <button
               key={role}
               onClick={() => setUser(role)}
@@ -91,17 +112,25 @@ function App() {
     </div>
   );
 
+  // ==========================================================
+  // ## RegistrarDashboard
+  // ==========================================================
   const RegistrarDashboard = () => {
     const [csvData, setCsvData] = useState('');
     const [showImport, setShowImport] = useState(false);
     const [showAddContestant, setShowAddContestant] = useState(false);
     const [editingContestant, setEditingContestant] = useState(null);
+    const [editingPageant, setEditingPageant] = useState(null); // NEW
     
     const [newContestant, setNewContestant] = useState({
-      name: '', email: '', division: '', beauty: true, photogenic: false, casual_wear: false
+      name: '', email: '', phone: '', division: '', beauty: true, photogenic: false, casual_wear: false
     });
     
+    // New Pageant State
     const [newPageantName, setNewPageantName] = useState('');
+    const [newPageantDate, setNewPageantDate] = useState('');
+    const [newPageantDivisions, setNewPageantDivisions] = useState('');
+    const [newPageantJudges, setNewPageantJudges] = useState('');
     const [enableCasualWear, setEnableCasualWear] = useState(false);
 
     const [checkInNumber, setCheckInNumber] = useState('');
@@ -109,6 +138,10 @@ function App() {
     
     const [sortConfig, setSortConfig] = useState({ key: 'contestant_number', direction: 'ascending' });
     const [divisionFilter, setDivisionFilter] = useState('');
+
+    // Send Scores State
+    const [sendScoresDivision, setSendScoresDivision] = useState('');
+    const [sendScoresStatus, setSendScoresStatus] = useState('');
     
     const requestSort = (key) => {
       let direction = 'ascending';
@@ -125,12 +158,22 @@ function App() {
 
     const createPageant = async () => {
       if (!newPageantName.trim()) return;
+      
+      const divisionsArray = newPageantDivisions.split(',').map(d => d.trim()).filter(Boolean);
+      const judgesArray = newPageantJudges.split(',').map(j => j.trim()).filter(Boolean);
+
       try {
         const response = await api.createPageant({
           name: newPageantName,
-          enable_casual_wear: enableCasualWear 
+          enable_casual_wear: enableCasualWear,
+          date: newPageantDate,
+          divisions: divisionsArray,
+          judges: judgesArray.length > 0 ? judgesArray : ['Judge 1', 'Judge 2', 'Judge 3'] // Default
         });
         setNewPageantName('');
+        setNewPageantDate('');
+        setNewPageantDivisions('');
+        setNewPageantJudges('');
         setEnableCasualWear(false); 
         await loadPageants();
         await api.setActivePageant(response.data.id);
@@ -138,6 +181,18 @@ function App() {
       } catch (error) {
         console.error('Error creating pageant:', error);
         alert('Error creating pageant');
+      }
+    };
+
+    const handleUpdatePageant = async (pageantData) => {
+      try {
+        await api.updatePageant(pageantData.id, pageantData);
+        setEditingPageant(null);
+        await loadPageants();
+        alert('Pageant updated successfully!');
+      } catch (error) {
+        console.error('Error updating pageant:', error);
+        alert('Error updating pageant');
       }
     };
 
@@ -183,6 +238,7 @@ function App() {
       });
       
       const emailIndex = headers.findIndex(h => h.toLowerCase().includes('email'));
+      const phoneIndex = headers.findIndex(h => h.toLowerCase().includes('phone')); // NEW
       const divisionIndex = headers.findIndex(h => h.toLowerCase().includes('division'));
       const photogenicIndex = headers.findIndex(h => h.toLowerCase().includes('photogenic'));
       
@@ -210,6 +266,7 @@ function App() {
         
         const name = values[nameIndex]?.trim();
         const email = values[emailIndex]?.trim();
+        const phone = phoneIndex >= 0 ? (values[phoneIndex]?.trim() || '') : ''; // NEW
         const division = divisionIndex >= 0 ? (values[divisionIndex]?.trim() || '') : '';
         
         if (!name || !email) continue;
@@ -218,6 +275,7 @@ function App() {
           pageant_id: activePageantId,
           name: name,
           email: email,
+          phone: phone, // NEW
           division: division,
           beauty: true,
           photogenic: photogenicIndex >= 0 ? (values[photogenicIndex]?.toLowerCase().includes('yes') || false) : false,
@@ -241,11 +299,11 @@ function App() {
           setLoading(false);
           return;
         }
-        await api.bulkCreateContestants(newContestants);
+        await api.bulkCreateContestants({contestants: newContestants}); // API expects { contestants: [...] }
         setCsvData('');
         setShowImport(false);
         await loadContestants();
-        await loadDivisions();
+        // await loadDivisions(); // No longer needed, divisions are fixed
         alert(`Successfully imported ${newContestants.length} contestants!`);
       } catch (error) {
         alert('Error importing CSV: ' + error.message);
@@ -259,8 +317,8 @@ function App() {
         alert('Please create or select an active pageant first');
         return;
       }
-      if (!newContestant.name || !newContestant.email) {
-        alert('Name and email are required');
+      if (!newContestant.name || !newContestant.email || !newContestant.division) {
+        alert('Name, Email, and Division are required');
         return;
       }
       try {
@@ -268,10 +326,10 @@ function App() {
           ...newContestant,
           pageant_id: activePageantId
         });
-        setNewContestant({ name: '', email: '', division: '', beauty: true, photogenic: false, casual_wear: false });
+        setNewContestant({ name: '', email: '', phone: '', division: '', beauty: true, photogenic: false, casual_wear: false });
         setShowAddContestant(false);
         await loadContestants();
-        await loadDivisions();
+        // await loadDivisions(); // No longer needed
       } catch (error) {
         console.error('Error adding contestant:', error);
         alert('Error adding contestant');
@@ -284,7 +342,7 @@ function App() {
         await api.updateContestant(editingContestant.id, editingContestant);
         setEditingContestant(null);
         await loadContestants();
-        await loadDivisions();
+        // await loadDivisions(); // No longer needed
       } catch (error) {
         console.error('Error updating contestant:', error);
         alert('Error updating contestant');
@@ -344,9 +402,30 @@ function App() {
         console.error('Error setting active pageant:', error);
       }
     };
+    
+    const handleSendScores = async () => {
+      if (!sendScoresDivision) {
+        alert("Please select a validated division to send scores.");
+        return;
+      }
+      
+      setSendScoresStatus('Sending score sheets... This may take a moment.');
+      setLoading(true);
+      
+      try {
+        const response = await api.sendScoreSheets(activePageantId, sendScoresDivision);
+        setSendScoresStatus(`Successfully sent ${response.data.sent} score sheets for ${sendScoresDivision}!`);
+        setSendScoresDivision('');
+      } catch (error) {
+        console.error('Error sending score sheets:', error);
+        setSendScoresStatus('An error occurred. Please check server logs.');
+      } finally {
+        setLoading(false);
+        setTimeout(() => setSendScoresStatus(''), 5000); 
+      }
+    };
 
     const activeContestants = getActiveContestants();
-    const activePageant = getActivePageant();
     
     const processedContestants = useMemo(() => {
       let filterableContestants = contestants.filter(c => c.pageant_id === activePageantId);
@@ -354,6 +433,7 @@ function App() {
         filterableContestants = filterableContestants.filter(c =>
           c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (c.phone && c.phone.includes(searchTerm)) || // NEW
           (c.division && c.division.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (c.contestant_number && c.contestant_number.includes(searchTerm))
         );
@@ -390,6 +470,7 @@ function App() {
             case 'name':
             case 'division':
             case 'email':
+            case 'phone': // NEW
             default:
               aValue = (aValue || '').toLowerCase();
               bValue = (bValue || '').toLowerCase();
@@ -405,6 +486,8 @@ function App() {
     const unpaidTotal = activeContestants.reduce((sum, c) => sum + (c.paid ? 0 : c.balance), 0);
     const checkedInCount = activeContestants.filter(c => c.checked_in).length;
 
+    const validatedDivisions = activePageant?.validated_divisions || [];
+
     return (
       <div className="p-6 max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-6">
@@ -414,19 +497,46 @@ function App() {
           </button>
         </div>
 
+        {/* --- NEW EDIT PAGEANT MODAL --- */}
+        {editingPageant && (
+          <EditPageantModal
+            pageant={editingPageant}
+            onClose={() => setEditingPageant(null)}
+            onSave={handleUpdatePageant}
+          />
+        )}
+
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h3 className="font-bold text-xl mb-4">Pageant Management</h3>
-          <div className="flex gap-2 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <input
               type="text"
               value={newPageantName}
               onChange={(e) => setNewPageantName(e.target.value)}
               placeholder="New Pageant Name"
-              className="flex-1 border rounded p-2"
+              className="border rounded p-2"
             />
-            <button onClick={createPageant} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded">
-              Create Pageant
-            </button>
+            <input
+              type="date"
+              value={newPageantDate}
+              onChange={(e) => setNewPageantDate(e.target.value)}
+              placeholder="Pageant Date"
+              className="border rounded p-2"
+            />
+            <input
+              type="text"
+              value={newPageantDivisions}
+              onChange={(e) => setNewPageantDivisions(e.target.value)}
+              placeholder="Divisions (comma-separated)"
+              className="border rounded p-2"
+            />
+            <input
+              type="text"
+              value={newPageantJudges}
+              onChange={(e) => setNewPageantJudges(e.target.value)}
+              placeholder="Judges (comma-separated, default 3)"
+              className="border rounded p-2"
+            />
           </div>
           <div className="flex items-center mb-4">
             <input
@@ -438,21 +548,36 @@ function App() {
             />
             <label htmlFor="enableCasualWear">Enable Casual Wear</label>
           </div>
+          <button onClick={createPageant} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded">
+            Create Pageant
+          </button>
+          
+          <hr className="my-6" />
+
           <div className="space-y-2">
             {pageants.map(p => (
               <div
                 key={p.id}
-                className={`flex justify-between items-center p-3 rounded cursor-pointer ${
+                className={`flex justify-between items-center p-3 rounded ${
                   p.id === activePageantId ? 'bg-purple-100 border-2 border-purple-600' : 'bg-gray-50'
                 }`}
-                onClick={() => setActivePageantHandler(p.id)}
               >
-                <div>
+                <div className="flex-1 cursor-pointer" onClick={() => setActivePageantHandler(p.id)}>
                   <span className="font-semibold">{p.name}</span>
+                  {p.date && <span className="ml-2 text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded">{p.date}</span>}
                   {p.enable_casual_wear === 1 && <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Casual Wear</span>}
                   {p.completed === 1 && <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Completed</span>}
                 </div>
-                {p.id === activePageantId && <span className="text-purple-600 font-bold">ACTIVE</span>}
+                <div className="flex items-center">
+                  {p.id === activePageantId && <span className="text-purple-600 font-bold mr-4">ACTIVE</span>}
+                  <button
+                    onClick={() => setEditingPageant(p)}
+                    className="text-purple-600 hover:text-purple-800"
+                    title="Edit Pageant"
+                  >
+                    <Edit2 className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -460,6 +585,39 @@ function App() {
 
         {activePageant && (
           <>
+            {/* --- NEW SEND SCORES SECTION --- */}
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
+              <h3 className="font-bold text-xl mb-4">Send Score Sheets</h3>
+              <p className="text-sm text-gray-600 mb-1">Select a division that has been validated by the Tabulator.</p>
+              <div className="flex gap-4 mb-4">
+                <select
+                  value={sendScoresDivision}
+                  onChange={(e) => setSendScoresDivision(e.target.value)}
+                  className="flex-1 border rounded p-2"
+                >
+                  <option value="">-- Select Validated Division --</option>
+                  {divisions.map(div => (
+                    <option key={div} value={div} disabled={!validatedDivisions.includes(div)}>
+                      {div} {validatedDivisions.includes(div) ? ' (Validated)' : ' (Not Validated)'}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleSendScores}
+                  disabled={!sendScoresDivision || loading}
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded flex items-center"
+                >
+                  <Mail className="w-5 h-5 mr-2" />
+                  Send Scores
+                </button>
+              </div>
+              {sendScoresStatus && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                  <p className="text-blue-800 font-medium">{sendScoresStatus}</p>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <button
                 onClick={() => setShowImport(!showImport)}
@@ -491,7 +649,7 @@ function App() {
               <div className="bg-white border-2 border-blue-300 rounded-lg p-4 mb-6">
                 <h3 className="font-semibold mb-2">Import Contestants (CSV Format)</h3>
                 <p className="text-sm text-gray-600 mb-2">
-                  Paste CSV with Name, Email, Division, Photogenic, Casual Wear columns
+                  CSV must include Name and Email. Optional: Phone, Division, Photogenic, Casual Wear.
                 </p>
                 <textarea
                   value={csvData}
@@ -513,28 +671,41 @@ function App() {
             {showAddContestant && (
               <div className="bg-white border-2 border-indigo-300 rounded-lg p-4 mb-6">
                 <h3 className="font-semibold mb-4">Add Walk-In Contestant</h3>
-                <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   <input
                     type="text"
-                    placeholder="Name"
+                    placeholder="Name*"
                     value={newContestant.name}
                     onChange={(e) => setNewContestant({ ...newContestant, name: e.target.value })}
                     className="border rounded p-2"
                   />
                   <input
                     type="email"
-                    placeholder="Email"
+                    placeholder="Email*"
                     value={newContestant.email}
                     onChange={(e) => setNewContestant({ ...newContestant, email: e.target.value })}
                     className="border rounded p-2"
                   />
                   <input
-                    type="text"
-                    placeholder="Division"
-                    value={newContestant.division}
-                    onChange={(e) => setNewContestant({ ...newContestant, division: e.target.value })}
+                    type="tel"
+                    placeholder="Phone"
+                    value={newContestant.phone}
+                    onChange={(e) => setNewContestant({ ...newContestant, phone: e.target.value })}
                     className="border rounded p-2"
                   />
+                </div>
+                <div className="mb-4">
+                  <label className="block mb-1 font-medium">Division*</label>
+                  <select
+                    value={newContestant.division}
+                    onChange={(e) => setNewContestant({ ...newContestant, division: e.target.value })}
+                    className="w-full border rounded p-2"
+                  >
+                    <option value="">-- Select Division --</option>
+                    {divisions.map(div => (
+                      <option key={div} value={div}>{div}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="flex gap-4 mb-4">
                   <label className="flex items-center">
@@ -567,7 +738,7 @@ function App() {
 
             {editingContestant && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
+                <div className="bg-white rounded-lg p-6 max-w-2xl w-full overflow-y-auto max-h-screen">
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="font-bold text-xl">Edit Contestant</h3>
                     <button onClick={() => setEditingContestant(null)} className="text-gray-500 hover:text-gray-700">
@@ -594,13 +765,26 @@ function App() {
                       />
                     </div>
                     <div>
-                      <label className="block mb-1 font-medium">Division</label>
+                      <label className="block mb-1 font-medium">Phone</label>
                       <input
-                        type="text"
+                        type="tel"
+                        value={editingContestant.phone || ''}
+                        onChange={(e) => setEditingContestant({ ...editingContestant, phone: e.target.value })}
+                        className="w-full border rounded p-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block mb-1 font-medium">Division</label>
+                       <select
                         value={editingContestant.division || ''}
                         onChange={(e) => setEditingContestant({ ...editingContestant, division: e.target.value })}
                         className="w-full border rounded p-2"
-                      />
+                      >
+                        <option value="">-- Select Division --</option>
+                        {divisions.map(div => (
+                          <option key={div} value={div}>{div}</option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="block mb-1 font-medium">Contestant Number</label>
@@ -716,6 +900,9 @@ function App() {
                       <th className="px-4 py-3 text-left cursor-pointer" onClick={() => requestSort('email')}>
                         Email{getSortIndicator('email')}
                       </th>
+                      <th className="px-4 py-3 text-left cursor-pointer" onClick={() => requestSort('phone')}>
+                        Phone{getSortIndicator('phone')}
+                      </th>
                       <th className="px-4 py-3 text-left">Categories</th>
                       <th className="px-4 py-3 text-center cursor-pointer" onClick={() => requestSort('paid')}>
                         Payment{getSortIndicator('paid')}
@@ -742,6 +929,7 @@ function App() {
                           <td className="px-4 py-3 font-medium">{c.name}</td>
                           <td className="px-4 py-3 text-sm text-gray-600">{c.division || '-'}</td>
                           <td className="px-4 py-3 text-sm text-gray-600">{c.email}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{c.phone || '-'}</td>
                           <td className="px-4 py-3 text-sm">{categories}</td>
                           <td className="px-4 py-3 text-center">
                             <button
@@ -795,6 +983,100 @@ function App() {
       </div>
     );
   };
+
+  // ==========================================================
+  // ## EditPageantModal (NEW COMPONENT)
+  // ==========================================================
+  const EditPageantModal = ({ pageant, onClose, onSave }) => {
+    const [name, setName] = useState(pageant.name);
+    const [date, setDate] = useState(pageant.date || '');
+    const [divisions, setDivisions] = useState(pageant.divisions.join(', '));
+    const [judges, setJudges] = useState(pageant.judges.join(', '));
+    const [enableCasualWear, setEnableCasualWear] = useState(pageant.enable_casual_wear === 1);
+
+    const handleSubmit = () => {
+      const divisionsArray = divisions.split(',').map(d => d.trim()).filter(Boolean);
+      const judgesArray = judges.split(',').map(j => j.trim()).filter(Boolean);
+
+      onSave({
+        id: pageant.id,
+        name,
+        date,
+        divisions: divisionsArray,
+        judges: judgesArray.length > 0 ? judgesArray : ['Judge 1', 'Judge 2', 'Judge 3'],
+        enable_casual_wear: enableCasualWear
+      });
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg p-6 max-w-2xl w-full">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-xl">Edit Pageant: {pageant.name}</h3>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block mb-1 font-medium">Pageant Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full border rounded p-2"
+              />
+            </div>
+            <div>
+              <label className="block mb-1 font-medium">Pageant Date</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full border rounded p-2"
+              />
+            </div>
+            <div>
+              <label className="block mb-1 font-medium">Divisions (comma-separated)</label>
+              <input
+                type="text"
+                value={divisions}
+                onChange={(e) => setDivisions(e.target.value)}
+                className="w-full border rounded p-2"
+              />
+            </div>
+            <div>
+              <label className="block mb-1 font-medium">Judges (comma-separated)</label>
+              <input
+                type="text"
+                value={judges}
+                onChange={(e) => setJudges(e.target.value)}
+                className="w-full border rounded p-2"
+              />
+            </div>
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={enableCasualWear}
+                onChange={(e) => setEnableCasualWear(e.target.checked)}
+                className="mr-2"
+              />
+              Enable Casual Wear
+            </label>
+          </div>
+          <div className="flex gap-2 mt-6">
+            <button onClick={handleSubmit} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded">
+              Save Changes
+            </button>
+            <button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
 
   // ==========================================================
   // ## JudgeDashboard
@@ -856,15 +1138,13 @@ function App() {
       'Overall Effect': []
     };
     
-    const activePageant = getActivePageant(); 
+    // const activePageant = getActivePageant(); // Using global activePageant
 
     useEffect(() => {
         if (activePageantId && user) {
             const loadMyScores = async () => {
                 try {
                     const response = await api.getScoresByJudge(activePageantId, user);
-
-                    // ✅ Normalize response to always be an array
                     let scoresArray = [];
                     if (Array.isArray(response.data)) {
                         scoresArray = response.data;
@@ -876,7 +1156,7 @@ function App() {
                     setMyScores(scoresArray);
                 } catch (error) {
                     console.error("Error loading judge's scores:", error);
-                    setMyScores([]); // fallback so .find() always works
+                    setMyScores([]);
                 }
                 };
             loadMyScores();
@@ -893,8 +1173,6 @@ function App() {
             if (foundScore) {
             setIsSubmitted(true);
             setSubmittedScore(foundScore);
-
-            // ✅ Fix: Safely parse score data if it’s stored as a JSON string
             let parsedScores = {};
             try {
                 parsedScores =
@@ -905,7 +1183,6 @@ function App() {
                 console.error('Error parsing scores:', err);
                 parsedScores = {};
             }
-
             setCurrentScores(parsedScores);
             setComments(foundScore.comments || '');
             } else {
@@ -970,7 +1247,7 @@ function App() {
         
         const response = await api.getScoresByJudge(activePageantId, user);
         
-        // Add the same normalization logic from your loadMyScores hook
+        // --- FIX from previous step ---
         let scoresArray = [];
         if (Array.isArray(response.data)) {
             scoresArray = response.data;
@@ -980,7 +1257,10 @@ function App() {
             console.warn("Unexpected scores response after submit:", response.data);
         }
         setMyScores(scoresArray);
-        onScoreSubmitted();
+        
+        // --- FIX from previous step ---
+        onScoreSubmitted(); // Tell App to reload all scores
+
         console.log("Submitting score:", {
             currentScores,
             total,
@@ -1004,9 +1284,6 @@ function App() {
       maxTotal = 25 * 4;
     }
 
-    // ==========================================================
-    // ## FIX 1: Add Logout button to "No active pageant"
-    // ==========================================================
     if (!activePageantId) {
       return (
         <div className="p-6 max-w-4xl mx-auto">
@@ -1182,14 +1459,15 @@ function App() {
   };
   
   // ==========================================================
-  // ## TabulatorDashboard
+  // ## TabulatorDashboard (MODIFIED)
   // ==========================================================
   const TabulatorDashboard = () => {
     const [tieBreakRequest, setTieBreakRequest] = useState(null);
     const [divisionFilter, setDivisionFilter] = useState('');
-    const activePageant = getActivePageant();
+    // const activePageant = getActivePageant(); // Using global
     
-    const [emailStatus, setEmailStatus] = useState('');
+    // const [emailStatus, setEmailStatus] = useState(''); // REMOVED
+    const [validationStatus, setValidationStatus] = useState(''); // NEW
     const [editingScore, setEditingScore] = useState(null); 
 
     const sortedContestants = useMemo(() => {
@@ -1262,12 +1540,8 @@ function App() {
 
     const divisionValidation = useMemo(() => {
       if (!divisionFilter) return { isValid: false, message: 'Select a division to validate.' };
+      if (!activePageant) return { isValid: false, message: 'Loading pageant...' };
 
-      const pageantCategories = ['beauty', 'photogenic'];
-      if (activePageant && activePageant.enable_casual_wear) {
-        pageantCategories.push('casual_wear');
-      }
-      
       const divContestants = contestants.filter(
         c => c.pageant_id === activePageantId && c.division === divisionFilter && c.checked_in
       );
@@ -1278,11 +1552,12 @@ function App() {
         divContestants.some(c => c.id === s.contestant_id)
       );
 
+      const expectedJudges = activePageant.judges?.length || 3;
       let requiredScores = 0;
       divContestants.forEach(c => {
-        if (c.beauty) requiredScores += 3; // 3 judges
-        if (c.photogenic) requiredScores += 3;
-        if (c.casual_wear && activePageant.enable_casual_wear) requiredScores += 3;
+        if (c.beauty) requiredScores += expectedJudges;
+        if (c.photogenic) requiredScores += expectedJudges;
+        if (c.casual_wear && activePageant.enable_casual_wear) requiredScores += expectedJudges;
       });
       
       const actualScores = divScores.length;
@@ -1302,24 +1577,26 @@ function App() {
       });
     };
     
-    const handleSendScores = async () => {
+    // NEW: Handle Division Validation
+    const handleValidateDivision = async () => {
       if (!divisionValidation.isValid) {
-        alert("Cannot send scores: " + divisionValidation.message);
+        alert("Cannot validate division: " + divisionValidation.message);
         return;
       }
       
-      setEmailStatus('Sending score sheets... This may take a moment.');
+      setValidationStatus('Validating division...');
       setLoading(true);
       
       try {
-        const response = await api.sendScoreSheets(activePageantId, divisionFilter);
-        setEmailStatus(`Successfully sent ${response.data.sent} score sheets for ${divisionFilter}!`);
+        await api.validateDivision(activePageantId, divisionFilter);
+        setValidationStatus(`Division "${divisionFilter}" has been validated! The Registrar can now send the scores.`);
+        loadPageants(); // Reload pageants to get updated validation status
       } catch (error) {
-        console.error('Error sending score sheets:', error);
-        setEmailStatus('An error occurred. Please check server logs.');
+        console.error('Error validating division:', error);
+        setValidationStatus('An error occurred during validation.');
       } finally {
         setLoading(false);
-        setTimeout(() => setEmailStatus(''), 5000); 
+        setTimeout(() => setValidationStatus(''), 5000); 
       }
     };
     
@@ -1400,9 +1677,6 @@ function App() {
       );
     };
 
-    // ==========================================================
-    // ## FIX 1: Add Logout button to "No active pageant"
-    // ==========================================================
     if (!activePageantId) {
       return (
         <div className="p-6 max-w-6xl mx-auto">
@@ -1418,6 +1692,8 @@ function App() {
         </div>
       );
     }
+    
+    const isDivisionValidated = activePageant?.validated_divisions?.includes(divisionFilter);
 
     return (
       <div className="p-6 max-w-6xl mx-auto">
@@ -1440,7 +1716,7 @@ function App() {
         </div>
 
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h3 className="font-bold text-xl mb-4">Division Validation & Send Scores</h3>
+          <h3 className="font-bold text-xl mb-4">Division Validation</h3>
           <select
             value={divisionFilter}
             onChange={(e) => setDivisionFilter(e.target.value)}
@@ -1457,20 +1733,23 @@ function App() {
               <p className={`font-medium ${divisionValidation.isValid ? 'text-green-800' : 'text-amber-800'}`}>
                 {divisionValidation.message}
               </p>
+              {isDivisionValidated && (
+                <p className="font-bold text-green-800 mt-2">This division has already been validated.</p>
+              )}
             </div>
           )}
 
           <button
-            onClick={handleSendScores}
-            disabled={!divisionValidation.isValid || loading}
-            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
+            onClick={handleValidateDivision}
+            disabled={!divisionValidation.isValid || loading || isDivisionValidated}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white p-4 rounded-lg flex items-center justify-center space-x-2"
           >
-            <Mail className="w-5 h-5" />
-            <span>{loading ? 'Sending...' : `Send Scores for ${divisionFilter || 'Division'}`}</span>
+            <UserCheck className="w-5 h-5" />
+            <span>{loading ? 'Validating...' : `Validate ${divisionFilter || 'Division'}`}</span>
           </button>
-          {emailStatus && (
+          {validationStatus && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4 text-center">
-              <p className="text-blue-800 font-medium">{emailStatus}</p>
+              <p className="text-blue-800 font-medium">{validationStatus}</p>
             </div>
           )}
         </div>
@@ -1569,9 +1848,6 @@ function App() {
                               </div>
                               <div className="text-2xl font-bold text-purple-600">{score.total.toFixed(1)}</div>
                               <div className="text-xs text-gray-500 mt-1">
-                                {/* ========================================================== */}
-                                {/* ## FIX 2: Removed the extra JSON.parse
-                                {/* ========================================================== */}
                                 {Object.entries(score.scores).map(([k, v]) => `${k}: ${v}`).join(', ')}
                               </div>
                               {score.comments && (

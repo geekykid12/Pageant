@@ -40,6 +40,7 @@ api.interceptors.response.use(
 
 export const getPageants = () => api.get('/pageants');
 export const createPageant = (pageantData) => api.post('/pageants', pageantData);
+export const updatePageant = (id, pageantData) => api.put(`/pageants/${id}`, pageantData); // NEW
 export const setActivePageant = (id) => api.put(`/pageants/${id}/active`);
 export const getActivePageant = () => api.get('/pageants/active');
 
@@ -53,11 +54,10 @@ export const getDivisions = (pageantId) => api.get(`/divisions/${pageantId}`);
 
 export const getScores = (pageantId) => api.get(`/scores/${pageantId}`);
 export const createScore = (data) => api.post('/scores', data);
-// ADDED: New endpoints
 export const updateScore = (id, data) => api.put(`/scores/${id}`, data);
 export const getScoresByJudge = (pageantId, judgeName) => api.get(`/scores/judge/${pageantId}/${judgeName}`);
+export const validateDivision = (pageantId, division) => api.post(`/pageants/${pageantId}/validate_division`, { division }); // NEW
 
-// MODIFIED: Now sends division
 export const sendScoreSheets = (pageantId, division) => api.post('/scores/send', { pageantId, division });
 
 export default api;
