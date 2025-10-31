@@ -49,8 +49,6 @@ function App() {
       if (active) {
         setActivePageantId(active.id);
       } else if (response.data.length > 0) {
-        // If no active, set first as active by default? Or just set ID?
-        // Let's just set the ID, but not call the API
         setActivePageantId(response.data[0]?.id || null);
       }
     } catch (error) {
@@ -78,14 +76,34 @@ function App() {
 
   const loadDivisions = async () => {
     try {
-      const response = await api.getDivisions(activePageantId);
-      setDivisions(response.data);
+      // This now correctly reads from the pageant data, not from contestants
+      if (activePageant) {
+        setDivisions(activePageant.divisions || []);
+      } else {
+        // Fallback if activePageant isn't set yet
+        const pageant = pageants.find(p => p.id === activePageantId);
+        if (pageant) {
+          setDivisions(pageant.divisions || []);
+        } else {
+           // Final fallback, hit API (though this is less efficient)
+           const response = await api.getDivisions(activePageantId);
+           setDivisions(response.data);
+        }
+      }
     } catch (error) {
       console.error('Error loading divisions:', error);
     }
   };
+  
+  // Re-load divisions if activePageant changes
+  useEffect(() => {
+    if (activePageant) {
+        setDivisions(activePageant.divisions || []);
+    }
+  }, [activePageant]);
 
-  // const getActivePageant = () => pageants.find(p => p.id === activePageantId);
+
+  // const getActivePageant = () => pageants.find(p => p.id === activePageantId); // Replaced with useMemo
   const getActiveContestants = () => contestants.filter(c => c.pageant_id === activePageantId);
   const getCheckedInContestants = () => getActiveContestants().filter(c => c.checked_in);
 
@@ -120,7 +138,7 @@ function App() {
     const [showImport, setShowImport] = useState(false);
     const [showAddContestant, setShowAddContestant] = useState(false);
     const [editingContestant, setEditingContestant] = useState(null);
-    const [editingPageant, setEditingPageant] = useState(null); // NEW
+    const [editingPageant, setEditingPageant] = useState(null); 
     
     const [newContestant, setNewContestant] = useState({
       name: '', email: '', phone: '', division: '', beauty: true, photogenic: false, casual_wear: false
@@ -188,7 +206,7 @@ function App() {
       try {
         await api.updatePageant(pageantData.id, pageantData);
         setEditingPageant(null);
-        await loadPageants();
+        await loadPageants(); // This will refresh the activePageant and all its data
         alert('Pageant updated successfully!');
       } catch (error) {
         console.error('Error updating pageant:', error);
@@ -238,7 +256,7 @@ function App() {
       });
       
       const emailIndex = headers.findIndex(h => h.toLowerCase().includes('email'));
-      const phoneIndex = headers.findIndex(h => h.toLowerCase().includes('phone')); // NEW
+      const phoneIndex = headers.findIndex(h => h.toLowerCase().includes('phone')); 
       const divisionIndex = headers.findIndex(h => h.toLowerCase().includes('division'));
       const photogenicIndex = headers.findIndex(h => h.toLowerCase().includes('photogenic'));
       
@@ -266,7 +284,7 @@ function App() {
         
         const name = values[nameIndex]?.trim();
         const email = values[emailIndex]?.trim();
-        const phone = phoneIndex >= 0 ? (values[phoneIndex]?.trim() || '') : ''; // NEW
+        const phone = phoneIndex >= 0 ? (values[phoneIndex]?.trim() || '') : ''; 
         const division = divisionIndex >= 0 ? (values[divisionIndex]?.trim() || '') : '';
         
         if (!name || !email) continue;
@@ -275,7 +293,7 @@ function App() {
           pageant_id: activePageantId,
           name: name,
           email: email,
-          phone: phone, // NEW
+          phone: phone, 
           division: division,
           beauty: true,
           photogenic: photogenicIndex >= 0 ? (values[photogenicIndex]?.toLowerCase().includes('yes') || false) : false,
@@ -299,11 +317,10 @@ function App() {
           setLoading(false);
           return;
         }
-        await api.bulkCreateContestants({contestants: newContestants}); // API expects { contestants: [...] }
+        await api.bulkCreateContestants({contestants: newContestants}); 
         setCsvData('');
         setShowImport(false);
         await loadContestants();
-        // await loadDivisions(); // No longer needed, divisions are fixed
         alert(`Successfully imported ${newContestants.length} contestants!`);
       } catch (error) {
         alert('Error importing CSV: ' + error.message);
@@ -329,7 +346,6 @@ function App() {
         setNewContestant({ name: '', email: '', phone: '', division: '', beauty: true, photogenic: false, casual_wear: false });
         setShowAddContestant(false);
         await loadContestants();
-        // await loadDivisions(); // No longer needed
       } catch (error) {
         console.error('Error adding contestant:', error);
         alert('Error adding contestant');
@@ -342,18 +358,41 @@ function App() {
         await api.updateContestant(editingContestant.id, editingContestant);
         setEditingContestant(null);
         await loadContestants();
-        // await loadDivisions(); // No longer needed
       } catch (error) {
         console.error('Error updating contestant:', error);
         alert('Error updating contestant');
       }
     };
 
+    // ==========================================================
+    // ## MODIFIED: toggleCheckIn
+    // ==========================================================
     const toggleCheckIn = async (id, currentStatus) => {
       if (!currentStatus) {
+        // Find the contestant to get their division
+        const contestant = contestants.find(c => c.id === id);
+        if (!contestant || !contestant.division) {
+            alert('This contestant does not have a division assigned. Please edit them first.');
+            return;
+        }
+
+        // Find the max number in that division
+        let maxNumber = 0;
+        contestants
+          .filter(c => c.division === contestant.division && c.contestant_number)
+          .forEach(c => {
+            const num = parseInt(c.contestant_number, 10);
+            if (!isNaN(num) && num > maxNumber) {
+              maxNumber = num;
+            }
+          });
+        
+        // Set the default number to max + 1
+        setCheckInNumber((maxNumber + 1).toString());
         setCheckInContestantId(id);
-        setCheckInNumber('');
+
       } else {
+        // Standard check-out logic
         try {
           await api.updateCheckIn(id, false, null);
           await loadContestants();
@@ -397,7 +436,7 @@ function App() {
       try {
         await api.setActivePageant(id);
         setActivePageantId(id);
-        await loadPageants();
+        await loadPageants(); // This will re-fetch all pageant data
       } catch (error) {
         console.error('Error setting active pageant:', error);
       }
@@ -433,7 +472,7 @@ function App() {
         filterableContestants = filterableContestants.filter(c =>
           c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (c.phone && c.phone.includes(searchTerm)) || // NEW
+          (c.phone && c.phone.includes(searchTerm)) || 
           (c.division && c.division.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (c.contestant_number && c.contestant_number.includes(searchTerm))
         );
@@ -447,10 +486,23 @@ function App() {
           let bValue = b[sortConfig.key];
           switch (sortConfig.key) {
             case 'contestant_number':
-              const aNum = aValue ? parseInt(aValue, 10) : Infinity;
-              const bNum = bValue ? parseInt(bValue, 10) : Infinity;
+              // Handle non-numeric and null/undefined values
+              const aNum = aValue ? parseInt(aValue.toString().replace(/\D/g, ''), 10) : Infinity;
+              const bNum = bValue ? parseInt(bValue.toString().replace(/\D/g, ''), 10) : Infinity;
+              
+              if (isNaN(aNum) && isNaN(bNum)) return 0;
+              if (isNaN(aNum)) return 1; // Put non-numeric at the end
+              if (isNaN(bNum)) return -1;
+              
               if (aNum < bNum) return sortConfig.direction === 'ascending' ? -1 : 1;
               if (aNum > bNum) return sortConfig.direction === 'ascending' ? 1 : -1;
+              
+              // Secondary sort by non-numeric part if numbers are equal (e.g., "10A" vs "10B")
+              const aStr = aValue ? aValue.toString() : '';
+              const bStr = bValue ? bValue.toString() : '';
+              if (aStr < bStr) return sortConfig.direction === 'ascending' ? -1 : 1;
+              if (aStr > bStr) return sortConfig.direction === 'ascending' ? 1 : -1;
+              
               return 0;
             case 'paid':
             case 'checked_in':
@@ -470,7 +522,7 @@ function App() {
             case 'name':
             case 'division':
             case 'email':
-            case 'phone': // NEW
+            case 'phone': 
             default:
               aValue = (aValue || '').toLowerCase();
               bValue = (bValue || '').toLowerCase();
@@ -497,7 +549,6 @@ function App() {
           </button>
         </div>
 
-        {/* --- NEW EDIT PAGEANT MODAL --- */}
         {editingPageant && (
           <EditPageantModal
             pageant={editingPageant}
@@ -585,7 +636,6 @@ function App() {
 
         {activePageant && (
           <>
-            {/* --- NEW SEND SCORES SECTION --- */}
             <div className="bg-white rounded-lg shadow p-6 mb-6">
               <h3 className="font-bold text-xl mb-4">Send Score Sheets</h3>
               <p className="text-sm text-gray-600 mb-1">Select a division that has been validated by the Tabulator.</p>
@@ -717,15 +767,17 @@ function App() {
                     />
                     Photogenic
                   </label>
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={newContestant.casual_wear}
-                      onChange={(e) => setNewContestant({ ...newContestant, casual_wear: e.target.checked })}
-                      className="mr-2"
-                    />
-                    Casual Wear
-                  </label>
+                  {activePageant?.enable_casual_wear === 1 && (
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={newContestant.casual_wear}
+                        onChange={(e) => setNewContestant({ ...newContestant, casual_wear: e.target.checked })}
+                        className="mr-2"
+                      />
+                      Casual Wear
+                    </label>
+                  )}
                 </div>
                 <button
                   onClick={addManualContestant}
@@ -806,15 +858,17 @@ function App() {
                       />
                       Photogenic
                     </label>
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={editingContestant.casual_wear === 1}
-                        onChange={(e) => setEditingContestant({ ...editingContestant, casual_wear: e.target.checked ? 1 : 0 })}
-                        className="mr-2"
-                      />
-                      Casual Wear
-                    </label>
+                    {activePageant?.enable_casual_wear === 1 && (
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={editingContestant.casual_wear === 1}
+                          onChange={(e) => setEditingContestant({ ...editingContestant, casual_wear: e.target.checked ? 1 : 0 })}
+                          className="mr-2"
+                        />
+                        Casual Wear
+                      </label>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <button onClick={updateContestant} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded">
@@ -985,7 +1039,7 @@ function App() {
   };
 
   // ==========================================================
-  // ## EditPageantModal (NEW COMPONENT)
+  // ## EditPageantModal (NEW COMPONENT from last step)
   // ==========================================================
   const EditPageantModal = ({ pageant, onClose, onSave }) => {
     const [name, setName] = useState(pageant.name);
@@ -1081,7 +1135,7 @@ function App() {
   // ==========================================================
   // ## JudgeDashboard
   // ==========================================================
-  const JudgeDashboard = ({ onScoreSubmitted }) => {
+  const JudgeDashboard = ({ onScoreSubmitted, activePageant }) => { // MODIFIED: Added activePageant prop
     const [currentScores, setCurrentScores] = useState({});
     const [comments, setComments] = useState('');
     const [selectedDivision, setSelectedDivision] = useState('');
@@ -1138,8 +1192,6 @@ function App() {
       'Overall Effect': []
     };
     
-    // const activePageant = getActivePageant(); // Using global activePageant
-
     useEffect(() => {
         if (activePageantId && user) {
             const loadMyScores = async () => {
@@ -1164,38 +1216,50 @@ function App() {
     }, [activePageantId, user]);
 
 
+    // ==========================================================
+    // ## MODIFIED: useEffect for score locking
+    // ==========================================================
     useEffect(() => {
         if (selectedContestant && category) {
+            // Check if division is validated
+            const isDivisionValidated = activePageant?.validated_divisions?.includes(selectedContestant.division);
+
             const foundScore = myScores.find(
             s => s.contestant_id === selectedContestant.id && s.category === category
             );
 
             if (foundScore) {
-            setIsSubmitted(true);
-            setSubmittedScore(foundScore);
-            let parsedScores = {};
-            try {
-                parsedScores =
-                typeof foundScore.scores === 'string'
-                    ? JSON.parse(foundScore.scores)
-                    : foundScore.scores || {};
-            } catch (err) {
-                console.error('Error parsing scores:', err);
-                parsedScores = {};
-            }
-            setCurrentScores(parsedScores);
-            setComments(foundScore.comments || '');
+              setIsSubmitted(true); // Lock if score is found
+              setSubmittedScore(foundScore);
+              let parsedScores = {};
+              try {
+                  parsedScores =
+                  typeof foundScore.scores === 'string'
+                      ? JSON.parse(foundScore.scores)
+                      : foundScore.scores || {};
+              } catch (err) {
+                  console.error('Error parsing scores:', err);
+                  parsedScores = {};
+              }
+              setCurrentScores(parsedScores);
+              setComments(foundScore.comments || '');
             } else {
-            setIsSubmitted(false);
-            setSubmittedScore(null);
-            setCurrentScores({});
-            setComments('');
+              setIsSubmitted(false); // Unlock if no score found
+              setSubmittedScore(null);
+              setCurrentScores({});
+              setComments('');
             }
+
+            // --- NEW: Force lock if division is validated ---
+            if (isDivisionValidated) {
+              setIsSubmitted(true);
+            }
+
         } else {
             setIsSubmitted(false);
             setSubmittedScore(null);
         }
-}, [selectedContestant, category, myScores]);
+    }, [selectedContestant, category, myScores, activePageant]);
 
 
     const divisionContestants = useMemo(() => {
@@ -1247,7 +1311,6 @@ function App() {
         
         const response = await api.getScoresByJudge(activePageantId, user);
         
-        // --- FIX from previous step ---
         let scoresArray = [];
         if (Array.isArray(response.data)) {
             scoresArray = response.data;
@@ -1258,7 +1321,6 @@ function App() {
         }
         setMyScores(scoresArray);
         
-        // --- FIX from previous step ---
         onScoreSubmitted(); // Tell App to reload all scores
 
         console.log("Submitting score:", {
@@ -1459,15 +1521,13 @@ function App() {
   };
   
   // ==========================================================
-  // ## TabulatorDashboard (MODIFIED)
+  // ## TabulatorDashboard
   // ==========================================================
   const TabulatorDashboard = () => {
     const [tieBreakRequest, setTieBreakRequest] = useState(null);
     const [divisionFilter, setDivisionFilter] = useState('');
-    // const activePageant = getActivePageant(); // Using global
     
-    // const [emailStatus, setEmailStatus] = useState(''); // REMOVED
-    const [validationStatus, setValidationStatus] = useState(''); // NEW
+    const [validationStatus, setValidationStatus] = useState(''); 
     const [editingScore, setEditingScore] = useState(null); 
 
     const sortedContestants = useMemo(() => {
@@ -1538,6 +1598,9 @@ function App() {
       return ties;
     }, [sortedContestants]); 
 
+    // ==========================================================
+    // ## MODIFIED: divisionValidation
+    // ==========================================================
     const divisionValidation = useMemo(() => {
       if (!divisionFilter) return { isValid: false, message: 'Select a division to validate.' };
       if (!activePageant) return { isValid: false, message: 'Loading pageant...' };
@@ -1554,16 +1617,48 @@ function App() {
 
       const expectedJudges = activePageant.judges?.length || 3;
       let requiredScores = 0;
+      let missingDetails = [];
+      
       divContestants.forEach(c => {
-        if (c.beauty) requiredScores += expectedJudges;
-        if (c.photogenic) requiredScores += expectedJudges;
-        if (c.casual_wear && activePageant.enable_casual_wear) requiredScores += expectedJudges;
+        let contestantRequired = 0;
+        let contestantActual = 0;
+        
+        // --- Check Beauty ---
+        if (c.beauty) {
+          const beautyScores = divScores.filter(s => s.contestant_id === c.id && s.category === 'beauty').length;
+          contestantRequired += expectedJudges;
+          contestantActual += beautyScores;
+        }
+        
+        // --- Check Photogenic ---
+        if (c.photogenic) {
+          const photoScores = divScores.filter(s => s.contestant_id === c.id && s.category === 'photogenic').length;
+          contestantRequired += expectedJudges;
+          contestantActual += photoScores;
+        }
+        
+        // --- Check Casual Wear ---
+        if (c.casual_wear && activePageant.enable_casual_wear) {
+          const casualScores = divScores.filter(s => s.contestant_id === c.id && s.category === 'casual_wear').length;
+          contestantRequired += expectedJudges;
+          contestantActual += casualScores;
+        }
+        
+        if (contestantActual < contestantRequired) {
+            missingDetails.push(`Contestant #${c.contestant_number} (${c.name}) is missing ${contestantRequired - contestantActual} scores.`);
+        }
+        requiredScores += contestantRequired;
       });
       
       const actualScores = divScores.length;
 
       if (actualScores < requiredScores) {
-        return { isValid: false, message: `Missing ${requiredScores - actualScores} scores for this division.` };
+        const message = `Missing ${requiredScores - actualScores} scores for this division.` + "\n" + missingDetails.join("\n");
+        return { isValid: false, message: message };
+      }
+      
+      if (missingDetails.length > 0) {
+         return { isValid: false, message: "Score counts mismatch. " + missingDetails.join("\n") };
       }
       
       return { isValid: true, message: 'All scores are in for this division.' };
@@ -1577,7 +1672,6 @@ function App() {
       });
     };
     
-    // NEW: Handle Division Validation
     const handleValidateDivision = async () => {
       if (!divisionValidation.isValid) {
         alert("Cannot validate division: " + divisionValidation.message);
@@ -1730,7 +1824,7 @@ function App() {
 
           {divisionFilter && (
             <div className={`p-4 rounded mb-4 ${divisionValidation.isValid ? 'bg-green-100 border-green-300' : 'bg-amber-50 border-amber-300'}`}>
-              <p className={`font-medium ${divisionValidation.isValid ? 'text-green-800' : 'text-amber-800'}`}>
+              <p className={`font-medium whitespace-pre-wrap ${divisionValidation.isValid ? 'text-green-800' : 'text-amber-800'}`}>
                 {divisionValidation.message}
               </p>
               {isDivisionValidated && (
@@ -1835,28 +1929,38 @@ function App() {
                           </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                          {catScores.map((score, idx) => (
-                            <div key={idx} className="bg-gray-50 p-3 rounded">
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm font-medium">{score.judge_name}</span>
-                                <button
-                                  onClick={() => setEditingScore(score)}
-                                  className="text-blue-600 hover:text-blue-800"
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                              <div className="text-2xl font-bold text-purple-600">{score.total.toFixed(1)}</div>
-                              <div className="text-xs text-gray-500 mt-1">
-                                {Object.entries(score.scores).map(([k, v]) => `${k}: ${v}`).join(', ')}
-                              </div>
-                              {score.comments && (
-                                <div className="text-xs text-gray-600 mt-2 italic border-t pt-2">
-                                  "{score.comments}"
+                          {catScores.map((score, idx) => {
+                            // ==========================================================
+                            // ## MODIFIED: Hide edit button if division is validated
+                            // ==========================================================
+                            const isDivisionValidated = activePageant?.validated_divisions?.includes(data.division);
+                            return (
+                              <div key={idx} className="bg-gray-50 p-3 rounded">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm font-medium">{score.judge_name}</span>
+                                  
+                                  {/* --- HIDE BUTTON IF VALIDATED --- */}
+                                  {!isDivisionValidated && (
+                                    <button
+                                      onClick={() => setEditingScore(score)}
+                                      className="text-blue-600 hover:text-blue-800"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                          ))}
+                                <div className="text-2xl font-bold text-purple-600">{score.total.toFixed(1)}</div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {Object.entries(score.scores).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                                </div>
+                                {score.comments && (
+                                  <div className="text-xs text-gray-600 mt-2 italic border-t pt-2">
+                                    "{score.comments}"
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
@@ -1872,8 +1976,10 @@ function App() {
 
   if (!user) return <LoginScreen />;
   if (user === 'Registrar') return <RegistrarDashboard />;
-  // Check if the selected user is in the dynamic judgeNames list
-  if (judgeNames.includes(user)) return <JudgeDashboard onScoreSubmitted={loadAllScores} />;
+  // ==========================================================
+  // ## MODIFIED: Pass activePageant prop
+  // ==========================================================
+  if (judgeNames.includes(user)) return <JudgeDashboard onScoreSubmitted={loadAllScores} activePageant={activePageant} />;
   if (user === 'Tabulator') return <TabulatorDashboard />;
   return null;
 }
