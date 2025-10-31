@@ -490,9 +490,103 @@ app.put('/api/scores/:id', (req, res) => {
 });
 
 // ==========================================================
-// ## PDF Generation and Email Endpoint (Unchanged logic)
+// ## PDF Generation and Email Endpoint (MODIFIED)
 // ==========================================================
+
+// NEW HELPER FUNCTION:
+// Contains the PDFKit logic to draw one contestant's score sheet.
+// This is used by both the email (buffer) and download (stream) functions.
+function addScoreSheetToDoc(doc, contestant, scores, pageantName) {
+  // Header
+  doc
+    .fontSize(20)
+    .font('Helvetica-Bold')
+    .text(pageantName, { align: 'center' });
+  doc.moveDown();
+
+  // Contestant Info
+  doc
+    .fontSize(16)
+    .font('Helvetica-Bold')
+    .text(`${contestant.name} (#${contestant.contestant_number || 'N/A'})`, { align: 'center' });
+  doc.fontSize(12).font('Helvetica').text(`Division: ${contestant.division || 'N/A'}`, { align: 'center' });
+  doc.moveDown(2);
+
+  // Group scores by category
+  const scoresByCategory = {};
+  scores.forEach(score => {
+    if (!scoresByCategory[score.category]) {
+      scoresByCategory[score.category] = [];
+    }
+    scoresByCategory[score.category].push(score);
+  });
+
+  let finalTotal = 0;
+
+  // Loop through categories and add to PDF
+  for (const category of Object.keys(scoresByCategory)) {
+    const catScores = scoresByCategory[category];
+    const catName = category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    
+    doc.fontSize(14).font('Helvetica-Bold').text(catName, { underline: true });
+    doc.moveDown(0.5);
+
+    let categoryTotal = 0;
+    catScores.forEach(score => {
+      doc.fontSize(10).font('Helvetica');
+      doc.text(`${score.judge_name}: ${score.total.toFixed(1)}`);
+      
+      // Add criteria breakdown
+      const criteriaScores = score.scores; // Already parsed
+      doc.font('Helvetica-Oblique').list(Object.entries(criteriaScores).map(([key, value]) => `${key}: ${value}`), {
+        bulletRadius: 2,
+        indent: 20,
+        textIndent: 8,
+      });
+
+      if (score.comments) {
+        doc.font('Helvetica-Oblique').fillColor('grey').text(`Comment: "${score.comments}"`, { indent: 20 });
+      }
+      
+      doc.fillColor('black'); // Reset color
+      doc.moveDown(0.5);
+      categoryTotal += score.total;
+    });
+    
+    const avgCategoryScore = (categoryTotal / catScores.length).toFixed(2);
+    doc.fontSize(10).font('Helvetica-Bold').text(`Category Total: ${categoryTotal.toFixed(1)} (Avg: ${avgCategoryScore})`);
+    doc.moveDown(1.5);
+    
+    finalTotal += categoryTotal;
+  }
+  
+  // Final Total
+  doc.moveDown(2);
+  doc.fontSize(16).font('Helvetica-Bold').text(`Final Combined Score: ${finalTotal.toFixed(1)}`);
+}
+
+
+// PDF Generation Helper (Unchanged)
+// This function now just creates a doc, calls the helper, and returns a buffer.
+function generateScoreSheetPdf(contestant, scores, pageantName) {
+  return new Promise((resolve) => {
+    const doc = new PDFDocument({ margin: 50 });
+    const buffers = [];
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', () => {
+      resolve(Buffer.concat(buffers));
+    });
+
+    // Call the helper to draw the content
+    addScoreSheetToDoc(doc, contestant, scores, pageantName);
+
+    doc.end();
+  });
+}
+
+// EMAIL Endpoint (Unchanged)
 app.post('/api/scores/send', async (req, res) => {
+  // ... (This function remains exactly the same as before)
   if (!transporter) {
     return res.status(500).json({ error: 'SMTP server is not configured. Emails disabled.' });
   }
@@ -513,6 +607,7 @@ app.post('/api/scores/send', async (req, res) => {
       const contestantScores = allScores.filter(s => s.contestant_id === contestant.id);
       if (contestantScores.length === 0) continue; 
 
+      // Use the original function to get a buffer
       const pdfBuffer = await generateScoreSheetPdf(contestant, contestantScores, PAGEANT_NAME);
 
       const mailOptions = {
@@ -543,86 +638,68 @@ app.post('/api/scores/send', async (req, res) => {
   }
 });
 
-// PDF Generation Helper (Unchanged)
-function generateScoreSheetPdf(contestant, scores, pageantName) {
-  return new Promise((resolve) => {
-    const doc = new PDFDocument({ margin: 50 });
-    const buffers = [];
-    doc.on('data', buffers.push.bind(buffers));
-    doc.on('end', () => {
-      resolve(Buffer.concat(buffers));
-    });
 
-    // Header
-    doc
-      .fontSize(20)
-      .font('Helvetica-Bold')
-      .text(pageantName, { align: 'center' });
-    doc.moveDown();
+// ==========================================================
+// ## NEW: PDF Download Endpoint
+// ==========================================================
+app.get('/api/scores/download/:pageantId/:division', async (req, res) => {
+  const { pageantId, division } = req.params;
+  const PAGEANT_NAME = process.env.PAGEANT_NAME || "Pageant Score Sheet";
 
-    // Contestant Info
-    doc
-      .fontSize(16)
-      .font('Helvetica-Bold')
-      .text(`${contestant.name} (#${contestant.contestant_number || 'N/A'})`, { align: 'center' });
-    doc.fontSize(12).font('Helvetica').text(`Division: ${contestant.division || 'N/A'}`, { align: 'center' });
-    doc.moveDown(2);
+  if (!division) {
+    return res.status(400).json({ error: 'A division must be selected.' });
+  }
 
-    // Group scores by category
-    const scoresByCategory = {};
-    scores.forEach(score => {
-      if (!scoresByCategory[score.category]) {
-        scoresByCategory[score.category] = [];
-      }
-      scoresByCategory[score.category].push(score);
-    });
-
-    let finalTotal = 0;
-
-    // Loop through categories and add to PDF
-    for (const category of Object.keys(scoresByCategory)) {
-      const catScores = scoresByCategory[category];
-      const catName = category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-      
-      doc.fontSize(14).font('Helvetica-Bold').text(catName, { underline: true });
-      doc.moveDown(0.5);
-
-      let categoryTotal = 0;
-      catScores.forEach(score => {
-        doc.fontSize(10).font('Helvetica');
-        doc.text(`${score.judge_name}: ${score.total.toFixed(1)}`);
-        
-        // Add criteria breakdown
-        const criteriaScores = score.scores; // Already parsed
-        doc.font('Helvetica-Oblique').list(Object.entries(criteriaScores).map(([key, value]) => `${key}: ${value}`), {
-          bulletRadius: 2,
-          indent: 20,
-          textIndent: 8,
-        });
-
-        if (score.comments) {
-          doc.font('Helvetica-Oblique').fillColor('grey').text(`Comment: "${score.comments}"`, { indent: 20 });
-        }
-        
-        doc.fillColor('black'); // Reset color
-        doc.moveDown(0.5);
-        categoryTotal += score.total;
-      });
-      
-      const avgCategoryScore = (categoryTotal / catScores.length).toFixed(2);
-      doc.fontSize(10).font('Helvetica-Bold').text(`Category Total: ${categoryTotal.toFixed(1)} (Avg: ${avgCategoryScore})`);
-      doc.moveDown(1.5);
-      
-      finalTotal += categoryTotal;
+  try {
+    // Get all contestants in the division (no email check needed)
+    const contestants = await dbAllPromise('SELECT * FROM contestants WHERE pageant_id = ? AND division = ? ORDER BY contestant_number', [pageantId, division]);
+    if (contestants.length === 0) {
+      return res.status(404).json({ error: 'No contestants found for this division.' });
     }
     
-    // Final Total
-    doc.moveDown(2);
-    doc.fontSize(16).font('Helvetica-Bold').text(`Final Combined Score: ${finalTotal.toFixed(1)}`);
+    const allScores = await dbAllPromise('SELECT * FROM scores WHERE pageant_id = ?', [pageantId]);
 
+    // Set headers for PDF download
+    const filename = `Score_Sheets_${division.replace(' ', '_')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // Create one document and pipe it to the response
+    const doc = new PDFDocument({ margin: 50 });
+    doc.pipe(res);
+
+    // Loop through contestants and add their scores to the doc
+    let contestantCount = 0;
+    for (const contestant of contestants) {
+      const contestantScores = allScores.filter(s => s.contestant_id === contestant.id);
+      if (contestantScores.length === 0) continue; 
+
+      // Add a new page for every contestant after the first one
+      if (contestantCount > 0) {
+        doc.addPage();
+      }
+
+      // Use the new helper to draw content onto the single doc
+      addScoreSheetToDoc(doc, contestant, contestantScores, PAGEANT_NAME);
+      contestantCount++;
+    }
+
+    // If no contestants had scores, end early
+    if (contestantCount === 0) {
+      doc.end();
+      // We can't send a 404 here as headers are already sent
+      console.warn(`Download triggered for division ${division}, but no contestants had scores.`);
+      return;
+    }
+
+    // Finalize the PDF
     doc.end();
-  });
-}
+
+  } catch (err) {
+    console.error('Failed to generate PDF download:', err);
+    res.status(500).json({ error: 'Failed to generate PDF download' });
+  }
+});
 
 // ==========================================================
 // ## APP STARTUP

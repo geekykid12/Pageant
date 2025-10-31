@@ -37,13 +37,11 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
 export const getPageants = () => api.get('/pageants');
 export const createPageant = (pageantData) => api.post('/pageants', pageantData);
 export const updatePageant = (id, pageantData) => api.put(`/pageants/${id}`, pageantData); // NEW
 export const setActivePageant = (id) => api.put(`/pageants/${id}/active`);
 export const getActivePageant = () => api.get('/pageants/active');
-
 export const getContestants = (pageantId) => api.get(`/contestants/${pageantId}`);
 export const createContestant = (data) => api.post('/contestants', data);
 export const updateContestant = (id, data) => api.put(`/contestants/${id}`, data);
@@ -51,13 +49,15 @@ export const bulkCreateContestants = (contestants) => api.post('/contestants/bul
 export const updateCheckIn = (id, checked_in, contestant_number) => api.put(`/contestants/${id}/checkin`, { checked_in, contestant_number });
 export const updatePayment = (id, paid, balance) => api.put(`/contestants/${id}/payment`, { paid, balance });
 export const getDivisions = (pageantId) => api.get(`/divisions/${pageantId}`);
-
 export const getScores = (pageantId) => api.get(`/scores/${pageantId}`);
 export const createScore = (data) => api.post('/scores', data);
 export const updateScore = (id, data) => api.put(`/scores/${id}`, data);
 export const getScoresByJudge = (pageantId, judgeName) => api.get(`/scores/judge/${pageantId}/${judgeName}`);
 export const validateDivision = (pageantId, division) => api.post(`/pageants/${pageantId}/validate_division`, { division }); // NEW
-
 export const sendScoreSheets = (pageantId, division) => api.post('/scores/send', { pageantId, division });
-
+export const downloadScoreSheets = (pageantId, division) => {
+  return api.get(`/scores/download/${pageantId}/${division}`, {
+    responseType: 'blob', // Tell axios to expect a binary file
+  });
+};
 export default api;

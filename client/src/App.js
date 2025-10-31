@@ -463,7 +463,46 @@ function App() {
         setTimeout(() => setSendScoresStatus(''), 5000); 
       }
     };
+    // ==========================================================
+    // ## NEW: handleDownloadScores
+    // ==========================================================
+    const handleDownloadScores = async () => {
+      if (!sendScoresDivision) {
+        alert("Please select a validated division to download scores.");
+        return;
+      }
 
+      setSendScoresStatus('Generating PDF... This may take a moment.');
+      setLoading(true);
+
+      try {
+        const response = await api.downloadScoreSheets(activePageantId, sendScoresDivision);
+
+        // Create a URL for the blob
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        
+        // Create a dynamic filename
+        const filename = `Score_Sheets_${sendScoresDivision.replace(' ', '_')}.pdf`;
+        link.setAttribute('download', filename);
+
+        // Append, click, and remove
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        setSendScoresStatus('Download complete!');
+
+      } catch (error) {
+        console.error('Error downloading score sheets:', error);
+        setSendScoresStatus('An error occurred during download. Please check server logs.');
+      } finally {
+        setLoading(false);
+        setTimeout(() => setSendScoresStatus(''), 5000);
+      }
+    };
     const activeContestants = getActiveContestants();
     
     const processedContestants = useMemo(() => {
@@ -652,14 +691,27 @@ function App() {
                     </option>
                   ))}
                 </select>
-                <button
-                  onClick={handleSendScores}
-                  disabled={!sendScoresDivision || loading}
-                  className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded flex items-center"
-                >
-                  <Mail className="w-5 h-5 mr-2" />
-                  Send Scores
-                </button>
+                {/* --- MODIFIED: Button Group --- */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSendScores}
+                    disabled={!sendScoresDivision || loading}
+                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded flex items-center"
+                  >
+                    <Mail className="w-5 h-5 mr-2" />
+                    Send Email
+                  </button>
+                  
+                  {/* --- NEW BUTTON --- */}
+                  <button
+                    onClick={handleDownloadScores}
+                    disabled={!sendScoresDivision || loading}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded flex items-center"
+                  >
+                    <Download className="w-5 h-5 mr-2" />
+                    Download PDF
+                  </button>
+                </div>
               </div>
               {sendScoresStatus && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
