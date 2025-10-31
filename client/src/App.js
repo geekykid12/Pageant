@@ -799,7 +799,7 @@ function App() {
   // ==========================================================
   // ## JudgeDashboard
   // ==========================================================
-  const JudgeDashboard = () => {
+  const JudgeDashboard = ({ onScoreSubmitted }) => {
     const [currentScores, setCurrentScores] = useState({});
     const [comments, setComments] = useState('');
     const [selectedDivision, setSelectedDivision] = useState('');
@@ -980,7 +980,7 @@ function App() {
             console.warn("Unexpected scores response after submit:", response.data);
         }
         setMyScores(scoresArray);
-        
+        onScoreSubmitted();
         console.log("Submitting score:", {
             currentScores,
             total,
@@ -1596,7 +1596,7 @@ function App() {
 
   if (!user) return <LoginScreen />;
   if (user === 'Registrar') return <RegistrarDashboard />;
-  if (user.startsWith('Judge')) return <JudgeDashboard />;
+  if (user.startsWith('Judge')) return <JudgeDashboard onScoreSubmitted={loadAllScores} />;
   if (user === 'Tabulator') return <TabulatorDashboard />;
   return null;
 }
